@@ -1,0 +1,47 @@
+name: Uptime
+
+# Checks the live site every 10 minutes. If a check fails, the run fails and GitHub emails the person who last
+# edited this schedule (Settings > Notifications > Actions must allow failed-run emails, which is the default).
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Site to check"
+        default: "https://mindly-ai.duckdns.org"
+
+permissions: {}
+
+concurrency:
+  group: uptime
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      SITE: ${{ inputs.url || 'https://mindly-ai.duckdns.org' }}
+    steps:
+      - name: The app is reachable over valid HTTPS
+        run: |
+          curl -fsS --retry 3 --retry-delay 5 --retry-all-errors --max-time 20 "$SITE/" -o /dev/null \
+            || { echo "::error::The home page is not reachable (or its certificate is invalid)"; exit 1; }
+
+      - name: The API is healthy and its keys are set
+        run: |
+          body=$(curl -fsS --retry 3 --retry-delay 5 --retry-all-errors --max-time 20 "$SITE/api/health") \
+            || { echo "::error::/api/health is not reachable"; exit 1; }
+          echo "$body"
+          echo "$body" | grep -q '"llm_key_set":true' || { echo "::error::The language model key is not set"; exit 1; }
+          echo "$body" | grep -q '"speech":"hosted' || { echo "::error::Hosted speech is not configured"; exit 1; }
+
+      - name: The certificate is not about to expire
+        run: |
+          host="${SITE#https://}"; host="${host%%/*}"
+          end=$(echo | openssl s_client -servername "$host" -connect "$host:443" 2>/dev/null | openssl x509 -noout -enddate | cut -d= -f2)
+          [ -n "$end" ] || { echo "::error::Could not read the certificate"; exit 1; }
+          days=$(( ( $(date -d "$end" +%s) - $(date +%s) ) / 86400 ))
+          echo "Certificate valid for $days more days"
+          [ "$days" -ge 7 ] || { echo "::error::The certificate expires in $days days"; exit 1; }
