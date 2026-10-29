@@ -1,0 +1,39 @@
+# Production stack for a single server: Mindly (API + web app) behind Caddy, which serves HTTPS.
+#   cp .env.example .env   # fill in DOMAIN and the keys, then:
+#   docker compose up -d --build
+# See docs/ORACLE-SETUP.md for the full server setup.
+
+services:
+  mindly:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      # Accounts database lives here. Bind mount so backups can read it from the host.
+      - ./data:/data
+    expose:
+      - "8080"        # reachable only from Caddy, not from the internet
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/config')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - mindly
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"       # needed for the certificate and the redirect to HTTPS
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data        # certificates; keep this or Caddy re-requests them on every restart
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

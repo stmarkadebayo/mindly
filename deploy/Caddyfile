@@ -1,0 +1,5 @@
+# Caddy terminates HTTPS (certificate from Let's Encrypt, renewed automatically) and forwards to the app.
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy mindly:8080
+}
