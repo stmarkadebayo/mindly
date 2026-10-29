@@ -37,6 +37,7 @@ export const BodyEditor = forwardRef<BodyHandle, {
   const last = useRef(0);          // the text run the cursor was last in
   const caretAt = useRef<{ i: number; pos: number } | null>(null);
   const [active, setActive] = useState<number | null>(null);   // the text run being edited; the rest show styled
+  const pending = useRef<(() => void) | null>(null);           // a tool tapped before any text was being edited
 
   const setText = (i: number, text: string) => onChange(join(parts.map((p, k) => (k === i ? { text } : p))));
 
@@ -44,6 +45,8 @@ export const BodyEditor = forwardRef<BodyHandle, {
     areas.current.forEach((el) => { if (el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; } });
     const c = caretAt.current;
     if (c) { caretAt.current = null; const el = areas.current[c.i]; if (el) { el.focus(); el.setSelectionRange(c.pos, c.pos); } }
+    const again = pending.current;   // the first tap only opened the text for editing; now do what was asked
+    if (again && areas.current.some(Boolean)) { pending.current = null; again(); }
   });
   useEffect(() => { const fit = () => areas.current.forEach((el) => { if (el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; } }); window.addEventListener("resize", fit); return () => window.removeEventListener("resize", fit); }, []);
 
@@ -53,17 +56,18 @@ export const BodyEditor = forwardRef<BodyHandle, {
     const el = areas.current[i];
     return el ? { i, el, pos: el.selectionStart ?? el.value.length } : null;   // null: nothing is being edited
   };
-  const noEdit = () => { // nothing selected: put the cursor at the end of the text so the next tap works
+  const noEdit = (retry: () => void) => { // nothing is being edited: open the end of the text for editing, then redo the tap
     let k = parts.length - 1;
     while (k > 0 && "img" in parts[k]) k--;
     const p = parts[k] as { text: string };
     caretAt.current = { i: k, pos: p.text.length };
+    pending.current = retry;
     setActive(k);
   };
 
-  useImperativeHandle(ref, () => ({
+  const api: BodyHandle = {
     style(kind) {
-      const t = target(); if (!t) return noEdit();
+      const t = target(); if (!t) return noEdit(() => api.style(kind));
       const { i, el, pos } = t;
       const text = el.value, a = el.selectionStart ?? pos, b = el.selectionEnd ?? pos;
       if (kind === "heading") {
@@ -75,6 +79,23 @@ export const BodyEditor = forwardRef<BodyHandle, {
         return;
       }
       const mk = kind === "bold" ? "**" : "_";
+      if (a === b) {   // nothing selected: style the word at the cursor, so a tap never leaves stray markers behind
+        const isWord = (c: string | undefined) => !!c && /[\p{L}\p{M}\p{N}'’-]/u.test(c);
+        let ws = a, we = a;
+        while (ws > 0 && isWord(text[ws - 1])) ws--;
+        while (we < text.length && isWord(text[we])) we++;
+        if (we > ws) {
+          const wrapped = text.slice(ws - mk.length, ws) === mk && text.slice(we, we + mk.length) === mk;
+          if (wrapped) {
+            caretAt.current = { i, pos: we - mk.length };
+            setText(i, text.slice(0, ws - mk.length) + text.slice(ws, we) + text.slice(we + mk.length));
+          } else {
+            caretAt.current = { i, pos: we + mk.length * 2 };
+            setText(i, text.slice(0, ws) + mk + text.slice(ws, we) + mk + text.slice(we));
+          }
+          return;
+        }
+      }
       const sel = text.slice(a, b);
       if (sel.startsWith(mk) && sel.endsWith(mk) && sel.length >= mk.length * 2) {
         caretAt.current = { i, pos: b - mk.length * 2 };
@@ -85,7 +106,7 @@ export const BodyEditor = forwardRef<BodyHandle, {
       }
     },
     list(kind) {
-      const t = target(); if (!t) return noEdit();
+      const t = target(); if (!t) return noEdit(() => api.list(kind));
       const { i, el, pos } = t;
       const text = el.value;
       const { start, end } = lineAt(text, pos);
@@ -101,7 +122,7 @@ export const BodyEditor = forwardRef<BodyHandle, {
       setText(i, text.slice(0, start) + next + rest + text.slice(end));
     },
     insertText(add) {
-      const t = target(); if (!t) return noEdit();
+      const t = target(); if (!t) return noEdit(() => api.insertText(add));
       const { i, el, pos } = t;
       const text = el.value, { end } = lineAt(text, pos);
       const at = text.slice(0, end).trim() ? end : pos;     // after the current line, or right here if it's empty
@@ -119,7 +140,8 @@ export const BodyEditor = forwardRef<BodyHandle, {
       caretAt.current = { i: i + 2, pos: 0 };
       onChange(join(next));
     },
-  }));
+  };
+  useImperativeHandle(ref, () => api);
 
   const key = (e: React.KeyboardEvent<HTMLTextAreaElement>, i: number) => {
     const el = e.currentTarget, text = el.value, caret = el.selectionStart;
