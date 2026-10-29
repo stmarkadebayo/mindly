@@ -77,13 +77,42 @@ Before building, we asked students six questions (how they capture thoughts, wha
 
 ## Architecture
 
-```
-Browser (Next.js + TypeScript, PWA)                   API (FastAPI, stateless)
-IndexedDB: entries, audio, photos, chats ──audio──▶  /api/transcribe   hosted Whisper (or local)
-Orb · Recorder · offline queue            ◀──text───  /api/write        Gemma 4 → faithful page + title
-Responsive shell (sidebar on desktop)     ──text───▶  /api/companion    Gemma 4 agent, streamed
-                                                      /api/insights     themes, patterns, one thing to try
-                                                      accounts.db       users + hashed session tokens only
+```mermaid
+flowchart LR
+  subgraph Device["Your device: browser app (installable PWA)"]
+    direction TB
+    UI["Next.js + TypeScript<br/>Orb · Recorder · Editor · Chat"]
+    DB[("IndexedDB<br/>entries · audio · photos · chats")]
+    Q["Offline queue"]
+    UI <--> DB
+    UI --> Q
+  end
+
+  subgraph Server["Mindly API: FastAPI, stateless"]
+    direction TB
+    T["/api/transcribe"]
+    W["/api/write"]
+    C["/api/companion<br/>agent with tools"]
+    I["/api/insights"]
+    TOOLS["search_journal · read_entry<br/>throwaway FTS5 index per request"]
+    A[("accounts.db<br/>users + hashed sessions")]
+    C --- TOOLS
+  end
+
+  subgraph Models["Open-weight models, hosted"]
+    WH["Whisper large-v3-turbo<br/>via Groq"]
+    GE["Gemma 4 26B-A4B-it<br/>via OpenRouter"]
+  end
+
+  Q <-->|"audio ⇄ transcript"| T
+  UI <-->|"transcript ⇄ page + title"| W
+  UI <-->|"message + a few entries ⇄ streamed reply"| C
+  UI <-->|"recent entries ⇄ themes"| I
+  UI <-->|"sign in / out"| A
+  T <--> WH
+  W <--> GE
+  C <--> GE
+  I <--> GE
 ```
 
 Journals stay on the device; the server is stateless apart from accounts. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for tenancy, security controls, the latency budget and the scaling path, and [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and [docs/AWS-SETUP.md](docs/AWS-SETUP.md) for hosting. The live app runs on one AWS EC2 instance (Docker, with Caddy for HTTPS).
@@ -134,7 +163,6 @@ We also tried the companion against the real model with a made-up journal: it se
 - **App lock is a screen lock, not encryption at rest.**
 - **Retrieval is keyword-based** (with stemming): it misses connections without shared words ("couldn't sleep" vs "insomnia"). Small open embedding models are the next step.
 - **Single process:** rate limits and quotas are in memory and accounts use SQLite. See the scaling path in the architecture doc.
-- **Speech latency** depends on the speech service. The local fallback is much slower on a CPU.
 - **Helpline numbers** (SURPIN 0800 078 7746, emergency 112) were checked against public directories in October 2026. Re-verify them before any real launch.
 - **Prototype scale:** the live demo is one small server with a daily AI limit per account.
 - **Evidence:** our student interviews had four responses. We have not run a usability study or measured transcription accuracy on a Nigerian speech test set.

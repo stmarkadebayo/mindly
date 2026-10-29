@@ -2,16 +2,65 @@
 
 Mindly is a small, stateless API in front of two hosted open-weight models, plus a web app that keeps each person's journal on their own device. The design goal is simple to run, safe by default, and able to grow by changing configuration before changing code.
 
+```mermaid
+flowchart LR
+  subgraph Device["Your device: browser app (installable PWA)"]
+    direction TB
+    UI["Next.js + TypeScript<br/>Orb · Recorder · Editor · Chat"]
+    DB[("IndexedDB<br/>entries · audio · photos · chats")]
+    Q["Offline queue"]
+    UI <--> DB
+    UI --> Q
+  end
+
+  subgraph Server["Mindly API: FastAPI, stateless"]
+    direction TB
+    T["/api/transcribe"]
+    W["/api/write"]
+    C["/api/companion<br/>agent with tools"]
+    I["/api/insights"]
+    TOOLS["search_journal · read_entry<br/>throwaway FTS5 index per request"]
+    A[("accounts.db<br/>users + hashed sessions")]
+    C --- TOOLS
+  end
+
+  subgraph Models["Open-weight models, hosted"]
+    WH["Whisper large-v3-turbo<br/>via Groq"]
+    GE["Gemma 4 26B-A4B-it<br/>via OpenRouter"]
+  end
+
+  Q <-->|"audio ⇄ transcript"| T
+  UI <-->|"transcript ⇄ page + title"| W
+  UI <-->|"message + a few entries ⇄ streamed reply"| C
+  UI <-->|"recent entries ⇄ themes"| I
+  UI <-->|"sign in / out"| A
+  T <--> WH
+  W <--> GE
+  C <--> GE
+  I <--> GE
 ```
-Browser (Next.js + TypeScript, installable PWA)                     API (FastAPI, stateless)
-───────────────────────────────────────────────                     ─────────────────────────
-IndexedDB, one database per account:                                /api/auth/*       sign up / in / out, Google
-  entries · recordings · conversations                              /api/transcribe   audio ──▶ hosted Whisper ──▶ text
-Orb (Web Audio FFT → canvas)                                        /api/write        text  ──▶ Gemma 4 ──▶ page + title
-Recorder (MediaRecorder, 32 kbps, 15 min cap)                       /api/companion    text + a few entries ──▶ Gemma 4
-Pipeline: saved → transcribing → writing → done                       /stream         the same, as it is written
-  (queued when offline, resumed when back online)                   /api/insights     recent entries ──▶ Gemma 4 ──▶ themes, patterns, one thing to try
-                                                                    accounts.db       users + hashed session tokens only
+
+A note's path, from voice to page:
+
+```mermaid
+sequenceDiagram
+  actor You
+  participant App as Browser app
+  participant API as Mindly API
+  participant WH as Whisper (Groq)
+  participant GE as Gemma 4 (OpenRouter)
+  You->>App: Tap the orb and talk
+  App->>App: Save the audio on the device
+  App->>API: POST /api/transcribe (audio)
+  API->>WH: audio + short Pidgin vocabulary hint
+  WH-->>API: segments with confidence
+  API-->>App: transcript (low-confidence segments dropped)
+  App->>API: POST /api/write (transcript)
+  API->>GE: faithful-writing prompt
+  GE-->>API: title + page
+  API-->>App: title + page
+  App->>App: Save the page on the device
+  App-->>You: The written page appears
 ```
 
 ## The web app
