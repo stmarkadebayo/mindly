@@ -78,25 +78,18 @@ Before building, we asked students six questions (how they capture thoughts, wha
 ## Architecture
 
 ```mermaid
-flowchart LR
-  subgraph Device["Your device: browser app (installable PWA)"]
-    direction TB
-    UI["Next.js + TypeScript<br/>Orb · Recorder · Editor · Chat"]
+flowchart TB
+  subgraph Device["Your device: browser app, installable PWA"]
+    UI["Orb · Recorder · Editor · Chat<br/>Next.js + TypeScript"]
     DB[("IndexedDB<br/>entries · audio · photos · chats")]
-    Q["Offline queue"]
-    UI <--> DB
-    UI --> Q
   end
 
   subgraph Server["Mindly API: FastAPI, stateless"]
-    direction TB
     T["/api/transcribe"]
     W["/api/write"]
-    C["/api/companion<br/>agent with tools"]
+    C["/api/companion<br/>agent + search tools"]
     I["/api/insights"]
-    TOOLS["search_journal · read_entry<br/>throwaway FTS5 index per request"]
     A[("accounts.db<br/>users + hashed sessions")]
-    C --- TOOLS
   end
 
   subgraph Models["Open-weight models, hosted"]
@@ -104,16 +97,19 @@ flowchart LR
     GE["Gemma 4 26B-A4B-it<br/>via OpenRouter"]
   end
 
-  Q <-->|"audio ⇄ transcript"| T
-  UI <-->|"transcript ⇄ page + title"| W
-  UI <-->|"message + a few entries ⇄ streamed reply"| C
-  UI <-->|"recent entries ⇄ themes"| I
-  UI <-->|"sign in / out"| A
-  T <--> WH
-  W <--> GE
-  C <--> GE
-  I <--> GE
+  UI --- DB
+  UI -->|audio| T
+  UI -->|transcript| W
+  UI -->|"message + a few entries"| C
+  UI -->|"recent entries"| I
+  UI -->|"sign in"| A
+  T --> WH
+  W --> GE
+  C --> GE
+  I --> GE
 ```
+
+Arrows show requests; each reply returns along the same path.
 
 Journals stay on the device; the server is stateless apart from accounts. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for tenancy, security controls, the latency budget and the scaling path, and [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and [docs/AWS-SETUP.md](docs/AWS-SETUP.md) for hosting. The live app runs on one AWS EC2 instance (Docker, with Caddy for HTTPS).
 

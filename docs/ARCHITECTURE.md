@@ -3,25 +3,18 @@
 Mindly is a small, stateless API in front of two hosted open-weight models, plus a web app that keeps each person's journal on their own device. The design goal is simple to run, safe by default, and able to grow by changing configuration before changing code.
 
 ```mermaid
-flowchart LR
-  subgraph Device["Your device: browser app (installable PWA)"]
-    direction TB
-    UI["Next.js + TypeScript<br/>Orb · Recorder · Editor · Chat"]
+flowchart TB
+  subgraph Device["Your device: browser app, installable PWA"]
+    UI["Orb · Recorder · Editor · Chat<br/>Next.js + TypeScript"]
     DB[("IndexedDB<br/>entries · audio · photos · chats")]
-    Q["Offline queue"]
-    UI <--> DB
-    UI --> Q
   end
 
   subgraph Server["Mindly API: FastAPI, stateless"]
-    direction TB
     T["/api/transcribe"]
     W["/api/write"]
-    C["/api/companion<br/>agent with tools"]
+    C["/api/companion<br/>agent + search tools"]
     I["/api/insights"]
-    TOOLS["search_journal · read_entry<br/>throwaway FTS5 index per request"]
     A[("accounts.db<br/>users + hashed sessions")]
-    C --- TOOLS
   end
 
   subgraph Models["Open-weight models, hosted"]
@@ -29,16 +22,19 @@ flowchart LR
     GE["Gemma 4 26B-A4B-it<br/>via OpenRouter"]
   end
 
-  Q <-->|"audio ⇄ transcript"| T
-  UI <-->|"transcript ⇄ page + title"| W
-  UI <-->|"message + a few entries ⇄ streamed reply"| C
-  UI <-->|"recent entries ⇄ themes"| I
-  UI <-->|"sign in / out"| A
-  T <--> WH
-  W <--> GE
-  C <--> GE
-  I <--> GE
+  UI --- DB
+  UI -->|audio| T
+  UI -->|transcript| W
+  UI -->|"message + a few entries"| C
+  UI -->|"recent entries"| I
+  UI -->|"sign in"| A
+  T --> WH
+  W --> GE
+  C --> GE
+  I --> GE
 ```
+
+Arrows show requests; each reply returns along the same path. Your journal stays in IndexedDB on the device. The server keeps only accounts, and the models see text and audio only while a request is being answered.
 
 A note's path, from voice to page:
 
