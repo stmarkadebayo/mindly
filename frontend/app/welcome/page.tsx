@@ -8,7 +8,7 @@ import { WANT_SAMPLE } from "@/lib/sample";
 const REPO = "https://github.com/stmarkadebayo/mindly";
 
 const STEPS: { icon: IconName; title: string; body: string }[] = [
-  { icon: "mic", title: "Speak", body: "Tap the orb and say what's on your mind, in English, Pidgin, Yoruba or Hausa. Switch languages mid-sentence if that's how you talk." },
+  { icon: "mic", title: "Speak", body: "Tap the orb and say what's on your mind, in English, Pidgin or Yoruba. Switch languages mid-sentence if that's how you talk." },
   { icon: "spark", title: "Get your page", body: "An open AI model turns your ramble into a clear, written page in your own words. Your voice, your facts, nothing added." },
   { icon: "heart", title: "Reflect", body: "Chat with a companion that has read your journal, notice how your mood moves, and come back to what mattered." },
 ];

@@ -209,7 +209,7 @@ def test_companion_prompt_is_helpful_and_multilingual():
     from mindly import reflect
     p = reflect.BASE_PROMPT
     assert "I can't give advice" in p and "Never answer" in p   # told not to refuse when asked for suggestions
-    assert "Pidgin" in p and "Yoruba" in p and "Igbo" in p and "Hausa" in p
+    assert "Pidgin" in p and "Yoruba" in p
     assert "medication" in p and "SURPIN" in p
 
 

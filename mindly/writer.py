@@ -13,9 +13,9 @@ Write it the way the person would have written it themselves:
   ("today, actually yesterday" becomes "yesterday").
 - Keep first person, their tense, their voice and informal style.
 - Keep every fact, name, number, date, feeling, doubt and contradiction. Keep uncomfortable thoughts as said.
-- Keep words in Yoruba, Pidgin, Igbo, Hausa or any other language exactly as spoken. Never translate.
+- Keep words in Yoruba, Pidgin or any other language exactly as spoken. Never translate.
 - Never add events, feelings, explanations, conclusions, advice or positive spin. Never summarise.
-- Code-switching is normal: people move between English, Pidgin, Yoruba, Igbo and Hausa mid-sentence. Keep each
+- Code-switching is normal: people move between English, Pidgin and Yoruba mid-sentence. Keep each
   switch where it happened and don't "correct" it into one language.
 - Structure it only where the person's own words call for it. If they list things to do or buy, write each as its own
   line starting with "☐ ". If they list other items, use lines starting with "• ". If they cover three or more clearly

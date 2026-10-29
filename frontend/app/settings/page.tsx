@@ -107,10 +107,10 @@ export default function Settings() {
         <label className="row"><span className="grow">Speech language</span>
           <select className="detail" style={{ border: 0, background: "none" }} value={me.profile.speechLanguage || ""}
             onChange={(e) => { pipeline.setLanguage(e.target.value); update({ profile: { ...me.profile, speechLanguage: e.target.value } }, "Speech language saved"); }}>
-            <option value="">Auto or English</option><option value="yo">Yoruba (experimental)</option><option value="ha">Hausa (experimental)</option>
+            <option value="">Auto (English, Pidgin, Yoruba)</option><option value="yo">Yoruba only</option>
           </select></label>
       </div>
-      <p className="footnote" style={{ margin: "6px 0 0" }}>Igbo isn&apos;t supported for speech yet. You can always edit the text.</p>
+      <p className="footnote" style={{ margin: "6px 0 0" }}>Mindly hears English, Nigerian Pidgin and Yoruba. Pidgin and Yoruba can need a quick edit afterwards.</p>
 
       <h2 className="section-label">Appearance</h2>
       <div className="group">

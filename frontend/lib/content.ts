@@ -16,10 +16,6 @@ export const GOALS: [string, string][] = [
   ["ideas", "Capture thoughts on the go"], ["gratitude", "Practise gratitude"], ["any", "Just curious"],
 ];
 
-export const LANGUAGES: [string, string][] = [
-  ["en", "English"], ["pcm", "Nigerian Pidgin"], ["yo", "Yoruba"], ["ig", "Igbo"], ["ha", "Hausa"], ["other", "Something else"],
-];
-
 /** Three prompts for Home. They follow the goals picked in onboarding and never shuffle. */
 export function defaultPrompts(profile?: Profile): string[] {
   const picked = (profile?.goals ?? []).flatMap((g) => PROMPTS[g] ?? []);

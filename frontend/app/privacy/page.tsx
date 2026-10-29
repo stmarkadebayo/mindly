@@ -8,7 +8,7 @@ export default function Privacy() {
       <h2>What&apos;s stored where</h2>
       <ul>
         <li><b>On this device</b>, in your browser&apos;s private storage: your entries, original recordings, transcripts, moods and conversations.</li>
-        <li><b>On our server</b>: your account (email, name, a scrambled password or your Google ID) and onboarding answers such as your goals and languages.</li>
+        <li><b>On our server</b>: your account (email, name, a scrambled password or your Google ID) and onboarding answers such as your goals.</li>
       </ul>
       <h2>What&apos;s sent, and to whom</h2>
       <ul>

@@ -77,9 +77,9 @@ def test_transcribe_and_write(main, monkeypatch):
                         lambda path, lang: hints.append(lang) or {"text": "um I finally finished it", "language": "en"})
     monkeypatch.setattr(main, "write_entry", lambda t, p, c: {"title": "Done", "body": "I finally finished it."})
     c = signed_in(main)
-    r = c.post("/api/transcribe", files={"audio": ("a.webm", b"x", "audio/webm")}, data={"language": "ig"}).json()
+    r = c.post("/api/transcribe", files={"audio": ("a.webm", b"x", "audio/webm")}, data={"language": "ha"}).json()
     assert r["text"] and r["no_speech"] is False
-    assert hints == [None]  # Whisper has no Igbo, so it auto-detects
+    assert hints == [None]  # only English and Yoruba are passed as hints; anything else auto-detects
     w = c.post("/api/write", json={"transcript": r["text"]}).json()
     assert w["body"] == "I finally finished it." and w["support"] is False
 

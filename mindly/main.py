@@ -29,7 +29,7 @@ from .writer import WritingError, write_entry
 COOKIE = "mindly_session"
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 AUDIO_TYPES = {"webm", "ogg", "mp4", "m4a", "wav", "mp3", "aiff"}
-WHISPER_HINTS = {"en", "yo", "ha"}
+WHISPER_HINTS = {"en", "yo"}
 
 app = FastAPI(title="Mindly", docs_url=None, redoc_url=None, openapi_url=None)  # no public API docs
 accounts = Accounts(config.DATA_DIR / "accounts.db")
@@ -226,7 +226,7 @@ async def transcribe_audio(audio: UploadFile = File(...), language: str = Form("
         path = Path(tmp) / f"audio.{ext}"
         path.write_bytes(data)
         try:
-            # Whisper has no Igbo or Pidgin; for anything it doesn't know, let it auto-detect.
+            # Whisper has no Pidgin; for anything it doesn't know, let it auto-detect.
             result = transcribe(path, language if language in WHISPER_HINTS else None)
         except ASRError as exc:
             raise HTTPException(502, str(exc))

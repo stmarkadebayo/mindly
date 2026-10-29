@@ -21,15 +21,14 @@ Mindly uses two open-weight models. Nothing in the challenge brief requires us t
 |---|---|---|
 | English, Nigerian English | Good | Good |
 | Pidgin | Short phrases transcribe reasonably, helped by a vocabulary hint ("abeg", "wahala", "dey", "wetin"); longer speech comes out as approximate English | Natural in our tests |
-| Yoruba, Hausa | Experimental in Whisper | Plausible; needs review by native speakers |
-| Igbo | Not supported by Whisper | Plausible; needs review by native speakers |
+| Yoruba | Weakest of the three in Whisper; can need a quick edit | Plausible; needs review by native speakers |
 
 Next step for speech: a Nigerian code-switching model such as yecsASR (Yoruba and English), or fine-tuning Whisper on Nigerian speech.
 
 ## How we use Whisper well
 
 - A short hint ("Nigerian English and Pidgin: abeg, wahala, dey, wetin, oga.") is sent with every hosted request. It fixes Pidgin spellings. Longer hints made the model hallucinate on noise, so we kept it short and added a confidence filter that drops low-confidence segments.
-- The language setting (Yoruba, Hausa or auto) is passed through when the user picks it; for anything Whisper doesn't know, it auto-detects.
+- Mindly doesn't ask people to choose a language: speech is auto-detected. Settings has an optional "Yoruba only" switch, which passes the language through to Whisper.
 - The writing model then fixes only obvious recognition errors and never translates.
 
 ## Licence compliance
