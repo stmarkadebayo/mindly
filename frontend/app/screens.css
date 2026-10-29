@@ -311,3 +311,70 @@
   .moods button:hover { background: var(--fill); }
   .avatar:hover { filter: brightness(0.95); }
 }
+
+/* ---------- landing (welcome) ----------
+   Phone: the original splash (the wrappers vanish with display: contents). Tablet and desktop: a landing page. */
+.hero, .copy { display: contents; }
+.brand-row { display: block; }
+.land-nav, .landing, .eyebrow { display: none; }
+
+@media (min-width: 700px) {
+  .welcome { max-width: 1120px; display: block; min-height: 0; padding: var(--sp4) var(--sp6) var(--sp6); position: relative; }
+  .welcome::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 720px; pointer-events: none; z-index: -1;
+    background: radial-gradient(60% 55% at 72% 42%, var(--lavender-soft), transparent 70%); }
+  .brand-row { display: flex; align-items: center; justify-content: space-between; min-height: 56px; }
+  .land-nav { display: flex; align-items: center; gap: var(--sp5); font-size: 15px; font-weight: 500; }
+  .land-nav a:not(.btn) { text-decoration: none; color: var(--ink-2); }
+  .land-nav a:not(.btn):hover { color: var(--ink); }
+  .land-nav .btn { min-height: 40px; padding: 0 var(--sp4); }
+  .hero { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); align-items: center; gap: var(--sp6); min-height: min(calc(100dvh - 140px), 720px); }
+  .copy { display: block; }
+  .eyebrow { display: block; margin: 0 0 var(--sp3); color: var(--lavender-ink); font-weight: 600; font-size: 14px; letter-spacing: 0.02em; }
+  .welcome h1 { font-size: 56px; line-height: 1.08; margin: 0 0 var(--sp4); }
+  .welcome .lead { font-size: 19px; max-width: 30em; }
+  .welcome .actions { display: flex; align-items: center; gap: var(--sp3); margin-top: var(--sp6); }
+  .welcome .actions .btn-block { width: auto; }
+  .welcome .actions .btn-primary { min-height: 52px; padding: 0 var(--sp6); font-size: 16px; }
+  .welcome .stage { order: 2; flex: none; width: 100%; max-width: 460px; justify-self: center; aspect-ratio: 1; }
+  .welcome .stage .orb { width: 78%; }
+
+  .landing { display: block; }
+  .landing section { margin-top: 96px; }
+  .land-h { font-family: var(--hand); font-weight: 400; font-size: 36px; line-height: 1.15; margin: 0 0 var(--sp5); text-align: center; letter-spacing: 0; }
+  .land-h.left { text-align: left; }
+  .cards { display: grid; gap: var(--sp4); }
+  .cards.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .card { background: var(--paper); border: 0.5px solid var(--hairline); border-radius: 22px; padding: var(--sp5); box-shadow: var(--shadow); position: relative; }
+  .card h3 { font-family: var(--hand); font-weight: 400; font-size: 24px; line-height: 1.2; margin: var(--sp3) 0 var(--sp2); letter-spacing: 0; }
+  .card p { margin: 0; color: var(--ink-2); font-size: 15px; }
+  .card .card-n { position: absolute; top: var(--sp4); right: var(--sp5); font-family: var(--hand); font-size: 22px; color: var(--muted); }
+  .card-ic { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: var(--lavender-soft); color: var(--lavender-ink); }
+  .card-ic svg { width: 22px; height: 22px; }
+  .landing .open { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: var(--sp6); align-items: center; }
+  .lead-2 { font-size: 17px; color: var(--ink-2); margin: 0 0 var(--sp4); max-width: 34em; }
+  .models { list-style: none; padding: 0; margin: 0 0 var(--sp4); display: grid; gap: var(--sp2); font-size: 15px; color: var(--ink-2); }
+  .models li { padding-left: var(--sp4); position: relative; }
+  .models li::before { content: ""; position: absolute; left: 0; top: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--lavender); }
+  .models b { color: var(--ink); }
+  .open-card { background: var(--lavender-soft); border-radius: 22px; padding: var(--sp6); display: grid; gap: var(--sp3); justify-items: start; }
+  .open-card .hand { font-size: 26px; line-height: 1.2; margin: 0; }
+  .open-card .subhead { margin: 0; }
+  .landing .cta { text-align: center; display: grid; justify-items: center; gap: var(--sp3); padding: var(--sp6) 0 0; }
+  .landing .cta .large-title { font-size: 44px; }
+  .landing .cta .subhead { margin: 0 0 var(--sp2); font-size: 17px; }
+  .landing .cta .btn-primary { min-height: 52px; padding: 0 var(--sp6); font-size: 16px; }
+  .landing .cta .care { max-width: 36em; margin-top: var(--sp5); }
+  .land-foot { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp5); margin-top: 72px; padding-top: var(--sp5); border-top: 0.5px solid var(--hairline); font-size: 14px; color: var(--muted); }
+  .land-foot a { color: var(--ink-2); text-decoration: none; }
+  .land-foot a:hover { color: var(--ink); text-decoration: underline; }
+}
+
+@media (min-width: 700px) and (max-width: 1099px) {
+  .hero { grid-template-columns: 1fr; text-align: center; gap: var(--sp4); min-height: 0; padding-top: var(--sp4); }
+  .welcome .stage { order: 0; max-width: 340px; }
+  .welcome .lead { margin-left: auto !important; margin-right: auto !important; }
+  .welcome .actions { justify-content: center; }
+  .welcome h1 { font-size: 46px; }
+  .cards.three { grid-template-columns: 1fr; }
+  .landing .open { grid-template-columns: 1fr; }
+}
