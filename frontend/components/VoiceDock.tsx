@@ -146,9 +146,9 @@ export const VoiceDock = forwardRef<VoiceHandle, Props>(function VoiceDock(
         <div className="listening" aria-live="polite">
           <span className="hand">{live ? (paused ? "Paused" : "I'm listening") : ""}</span>
           {live && prompt && <span className="prompt">{prompt}</span>}
-          {live && <small>Tap ✓ when you&apos;re done</small>}
+          {live && <small>Tap the orb to pause · ✓ to finish</small>}
         </div>
-        <button className="orb-btn" aria-label={live ? "Recording" : "Start talking"} onClick={() => { if (!live) start(); }}>
+        <button className="orb-btn" aria-label={live ? (paused ? "Resume recording" : "Pause recording") : "Start talking"} onClick={() => { if (live) togglePause(); else start(); }}>
           <Orb stream={stream} paused={paused} idle={live ? 0.6 : 1.2} pad={1.7} />
         </button>
         {!coach && hint && <span className="hint">{hint}</span>}

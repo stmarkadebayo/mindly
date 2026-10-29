@@ -77,7 +77,7 @@ export default function Onboarding() {
             <li><span className="ic"><Icon name="mic" /></span><div><b>Record only yourself, within the model licences.</b><div className="subhead">Don&apos;t transcribe other people without their consent. Mindly&apos;s open models (Whisper, Gemma) come with licences and usage rules you agree to follow.</div></div></li>
           </ul>
           <label className="consent"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-            I understand how Mindly handles my data, it isn&apos;t a substitute for professional help, and I agree to the <a href="/terms/" target="_blank">terms</a>, including the model licences and recording only myself.</label>
+            <span>I understand how Mindly handles my data, it isn&apos;t a substitute for professional help, and I agree to the <a href="/terms/" target="_blank">terms</a>, including the model licences and recording only myself.</span></label>
         </>}
 
         {s === "mic" && <>

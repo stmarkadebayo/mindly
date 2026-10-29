@@ -103,7 +103,7 @@
   font-family: var(--hand); font-size: 16px; color: var(--muted); transition: opacity 0.3s; }
 .voice .coach { position: absolute; left: 0; bottom: calc(104px + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; white-space: nowrap; transition: opacity 0.3s; }
 .voice .coach .hand { font-size: 18px; color: var(--ink-2); }
-.voice .controls { position: absolute; left: 0; bottom: calc(32px + env(safe-area-inset-bottom)); transform: translate(-50%, 16px) scale(0.92); opacity: 0; pointer-events: none;
+.voice .controls { position: absolute; left: 0; bottom: calc(56px + env(safe-area-inset-bottom)); transform: translate(-50%, 16px) scale(0.92); opacity: 0; pointer-events: none;
   display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; transition: all 0.55s var(--spring); }
 .voice .controls .clock { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 48px; text-align: center; font-size: 15px; }
 .voice .controls .done { background: var(--ink); color: var(--canvas); }
