@@ -316,7 +316,7 @@
    Phone: the original splash (the wrappers vanish with display: contents). Tablet and desktop: a landing page. */
 .hero, .copy { display: contents; }
 .brand-row { display: block; }
-.land-nav, .landing, .eyebrow { display: none; }
+.land-nav, .landing, .eyebrow, .scroll-cue { display: none; }
 
 @media (min-width: 700px) {
   .welcome { max-width: 1120px; display: block; min-height: 0; padding: var(--sp4) var(--sp6) var(--sp6); position: relative; }
@@ -327,7 +327,7 @@
   .land-nav a:not(.btn) { text-decoration: none; color: var(--ink-2); }
   .land-nav a:not(.btn):hover { color: var(--ink); }
   .land-nav .btn { min-height: 40px; padding: 0 var(--sp4); }
-  .hero { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); align-items: center; gap: var(--sp6); min-height: min(calc(100dvh - 140px), 720px); }
+  .hero { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); align-items: center; gap: var(--sp6); min-height: clamp(420px, calc(100dvh - 300px), 560px); }
   .copy { display: block; }
   .eyebrow { display: block; margin: 0 0 var(--sp3); color: var(--lavender-ink); font-weight: 600; font-size: 14px; letter-spacing: 0.02em; }
   .welcome h1 { font-size: 56px; line-height: 1.08; margin: 0 0 var(--sp4); }
@@ -342,7 +342,11 @@
   .screen.auth-page .topbar { margin-left: -17px; } /* the arrow's own padding, so its edge meets the logo's */
 
   .landing { display: block; }
-  .landing section { margin-top: 96px; }
+  .landing section { margin-top: 72px; }
+  .landing section:first-child { margin-top: 8px; }
+  .scroll-cue { display: inline-flex; align-items: center; gap: var(--sp1); margin-top: var(--sp5); padding: 0; border: 0; background: none; color: var(--muted); font-size: 14px; }
+  .scroll-cue:hover { color: var(--ink); }
+  .scroll-cue svg { width: 16px; height: 16px; transform: rotate(90deg); }
   .land-h { font-family: var(--hand); font-weight: 400; font-size: 36px; line-height: 1.15; margin: 0 0 var(--sp5); text-align: center; letter-spacing: 0; }
   .land-h.left { text-align: left; }
   .cards { display: grid; gap: var(--sp4); }

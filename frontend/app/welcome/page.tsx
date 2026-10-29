@@ -45,6 +45,9 @@ export default function Welcome() {
             <Link className="btn btn-primary btn-block" href="/auth/?mode=signup">Get started</Link>
             <Link className="btn btn-plain btn-block" href="/auth/?mode=signin">I already have an account</Link>
           </div>
+          <button className="scroll-cue" onClick={() => document.getElementById("how")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+            See how it works <Icon name="chev" />
+          </button>
         </div>
       </section>
 
