@@ -1,7 +1,8 @@
 """Throwaway full-text index over the entries a device sends with one reflection request.
 
 Journals live on the device, so the server never keeps an index. Each request builds an
-in-memory SQLite FTS5 table from the entries it was given and discards it afterwards.
+in-memory SQLite FTS5 table from the entries it was given and discards it afterwards. Porter stemming lets
+"exams" find "exam" and "sleeping" find "slept"-style variants of the same word.
 """
 
 import re
@@ -31,7 +32,7 @@ class EntryIndex:
         self.entries = {e["id"]: e for e in entries}
         self.db = sqlite3.connect(":memory:")
         self.db.execute("CREATE VIRTUAL TABLE fts USING fts5(id UNINDEXED, title, body,"
-                        " tokenize = 'unicode61 remove_diacritics 2')")
+                        " tokenize = 'porter unicode61 remove_diacritics 2')")
         self.db.executemany("INSERT INTO fts VALUES (?, ?, ?)",
                             [(e["id"], e.get("title") or "", e.get("body") or "") for e in entries])
 

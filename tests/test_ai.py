@@ -230,3 +230,18 @@ def test_insights_need_a_couple_of_entries():
     from mindly.insights import insights
     with pytest.raises(ValueError):
         insights(JOURNAL[:1])
+
+
+def test_search_finds_word_variants():
+    from mindly.search import EntryIndex
+    index = EntryIndex([{"id": "x", "created": "2026-10-10T00:00:00Z", "title": "Exam stress", "body": "Couldn't sleep before the test."}])
+    assert [h["id"] for h in index.search("exams")] == ["x"]
+    assert [h["id"] for h in index.search("sleeping")] == ["x"]
+
+
+def test_citation_without_hash_is_still_grounded():
+    from mindly.reflect import Refs
+    refs = Refs(["id-a", "id-b"])
+    refs.seen.add(1)
+    text, cited = refs.ground("Sleep was hard [1] and then [2].")
+    assert "[#id-a]" in text and "[2]" not in text and cited == ["id-a"]

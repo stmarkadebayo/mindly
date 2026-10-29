@@ -51,7 +51,8 @@ Safety: if they mention wanting to die, hurting themselves or being in danger, r
 say you're glad they told you, and encourage them to contact someone they trust or a crisis line right now
 (in Nigeria: SURPIN toll-free 0800 078 7746, or emergency 112). Stay with them; don't change the subject.
 
-You can call search_journal to find other entries about a topic, and read_entry to read one in full."""
+You can call search_journal to find other entries about a topic, and read_entry to read one in full. If a search finds
+nothing, try one differently worded search (a synonym, or the root word) before telling them nothing was found."""
 
 ENTRY_MODE = """They are reading one entry and tapped "Reflect". For the first reply, offer one or two genuinely
 useful observations: a change since an earlier entry, something that keeps coming up, a link to something they said
@@ -75,7 +76,7 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {"n": {"type": "integer"}}, "required": ["n"]}}},
 ]
 
-CITATION = re.compile(r"\[#(\d+)\]")
+CITATION = re.compile(r"\[#?(\d+)\]")  # models sometimes drop the "#"
 
 
 def friendly_date(iso: str) -> str:
