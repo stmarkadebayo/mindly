@@ -85,6 +85,7 @@ fly deploy
 - [ ] HTTPS on. Test the microphone on a phone.
 - [ ] Persistent volume mounted at `DATA_DIR`.
 - [ ] Google sign-in: your live URL added under **Authorized JavaScript origins** in the OAuth client, and the consent screen published (so people outside your test list can sign in).
-- [ ] Budget alerts on the language-model and speech providers.
+- [ ] Budget alerts and spend caps on the language-model and speech providers.
+- [ ] `LLM_FALLBACK_MODEL` and `ASR_FALLBACK_MODEL` set, so a provider hiccup doesn't reach people.
 - [ ] Helpline numbers in the app re-verified (SURPIN 0800 078 7746, emergency 112).
 - [ ] If more than one machine is needed: Postgres for accounts and Redis for rate limits first (see ARCHITECTURE.md).

@@ -268,3 +268,55 @@ def test_blank_page_for_a_real_transcript_is_retried_once():
     client, seen = scripted([blank, good])
     out = write_entry("I was so tired all day and I just wanted to lie down and not talk to anyone", client=client)
     assert out["body"] == "I was tired all day." and len(seen) == 2
+
+
+# --- reliability: retries and a fallback model ---------------------------------------------------------------
+
+def flaky(statuses, ok_body=None):
+    """A fake model endpoint that answers with the given statuses in turn; after them, a good reply."""
+    seen = []
+
+    def handler(request):
+        payload = json.loads(request.content)
+        seen.append(payload["model"])
+        status = statuses[len(seen) - 1] if len(seen) <= len(statuses) else 200
+        if status != 200:
+            return httpx.Response(status, text="busy")
+        return httpx.Response(200, json={"choices": [{"message": ok_body or {"role": "assistant", "content": "hello"}}]})
+
+    return httpx.Client(transport=httpx.MockTransport(handler)), seen
+
+
+def test_chat_retries_transient_errors():
+    client, seen = flaky([503, 429])
+    assert llm.chat("main", [{"role": "user", "content": "hi"}], client=client)["content"] == "hello"
+    assert seen == ["main", "main", "main"]
+
+
+def test_chat_does_not_retry_a_client_error():
+    client, seen = flaky([401])
+    with pytest.raises(llm.LLMError):
+        llm.chat("main", [{"role": "user", "content": "hi"}], client=client)
+    assert seen == ["main"]
+
+
+def test_chat_falls_back_to_the_second_model(monkeypatch):
+    monkeypatch.setattr(config, "LLM_FALLBACK_MODEL", "backup")
+    client, seen = flaky([503, 503, 503])   # the main model fails every attempt
+    assert llm.chat("main", [{"role": "user", "content": "hi"}], client=client)["content"] == "hello"
+    assert seen == ["main", "main", "main", "backup"]
+
+
+def test_chat_stream_retries_before_any_words_were_sent():
+    good = sse(text("Hello "), text("there."))
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        if len(calls) == 1:
+            return httpx.Response(503, text="busy")
+        return httpx.Response(200, content=good, headers={"content-type": "text/event-stream"})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    events = list(llm.chat_stream("main", [{"role": "user", "content": "hi"}], client=client))
+    assert [v for k, v in events if k == "delta"] == ["Hello ", "there."] and len(calls) == 2

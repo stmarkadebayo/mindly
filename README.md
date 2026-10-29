@@ -158,6 +158,7 @@ We also tried the companion against the real model with a made-up journal: it se
 - **The journal is tied to one browser.** Clearing site data deletes it. Export regularly; export is the only backup today. Cross-device sync would need end-to-end encryption to keep the privacy promise, and we have not built it.
 - **App lock is a screen lock, not encryption at rest.**
 - **Retrieval is keyword-based** (with stemming): it misses connections without shared words ("couldn't sleep" vs "insomnia"). Small open embedding models are the next step.
+- **One server:** the live demo runs on one small server with no automatic failover or alerting. Transient errors from the speech and language services are retried and fall back to a second model, but a full outage of both would stop the AI features (recordings stay saved on the device).
 - **Single process:** rate limits and quotas are in memory and accounts use SQLite. See the scaling path in the architecture doc.
 - **Helpline numbers** (SURPIN 0800 078 7746, emergency 112) were checked against public directories in October 2026. Re-verify them before any real launch.
 - **Prototype scale:** the live demo is one small server with a daily AI limit per account.

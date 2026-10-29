@@ -13,6 +13,8 @@ LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
 WRITER_MODEL = os.getenv("WRITER_MODEL", "google/gemma-4-26b-a4b-it")
 REFLECT_MODEL = os.getenv("REFLECT_MODEL", WRITER_MODEL)
+# If the main model keeps failing, try this one (same family is best, so the prompts behave the same). Empty means none.
+LLM_FALLBACK_MODEL = os.getenv("LLM_FALLBACK_MODEL", "")
 # OpenRouter only: route requests solely to providers that don't collect or train on prompts. A journal should
 # never be fair game, so this is on unless you turn it off.
 LLM_DENY_DATA_COLLECTION = os.getenv("LLM_DENY_DATA_COLLECTION", "1").lower() not in ("0", "false", "no")
@@ -24,6 +26,8 @@ LLM_DENY_DATA_COLLECTION = os.getenv("LLM_DENY_DATA_COLLECTION", "1").lower() no
 ASR_API_KEY = os.getenv("ASR_API_KEY", "")
 ASR_BASE_URL = os.getenv("ASR_BASE_URL", "https://api.groq.com/openai/v1")
 ASR_MODEL = os.getenv("ASR_MODEL", "whisper-large-v3-turbo")
+# If the hosted speech model keeps failing, try this one (for Groq, the non-turbo large-v3). Empty means none.
+ASR_FALLBACK_MODEL = os.getenv("ASR_FALLBACK_MODEL", "")
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")  # used only for on-machine speech recognition
 
 # --- Accounts ---

@@ -138,6 +138,17 @@ The companion's reply is streamed as newline-delimited JSON, so the first words 
 
 One AWS EC2 instance (t4g.small, Ubuntu, in the account's Region) runs the Docker image and Caddy, which gets and renews the HTTPS certificate. The accounts database is on the instance's encrypted 20 GiB disk. Updating is `git archive HEAD | ssh ... tar -x` followed by `docker compose up -d --build`. See [AWS-SETUP.md](AWS-SETUP.md).
 
+## Reliability
+
+The app depends on two hosted services (speech and language), so the first rule is that a hiccup there shouldn't reach the person.
+
+- **Retries.** A timeout, dropped connection, rate limit (429) or server error (5xx) from the speech or language service is retried twice with a short backoff (0.4 s, then 1.2 s). A wrong key or a bad request is not retried, because trying again can't fix it.
+- **A fallback model.** If the main model still fails, the request goes to `LLM_FALLBACK_MODEL` (Gemma 4 31B-it, same family and licence, so the prompts behave the same) or `ASR_FALLBACK_MODEL` (Whisper large-v3). Both are optional settings.
+- **Streaming.** A chat reply that fails before any words are sent is retried; one that fails halfway is not, because that would repeat words the person has already read.
+- **Nothing is lost.** Recordings are saved on the device before anything is sent, a failed step shows "Try again" with the recording kept, and an offline recording is queued and resumed when the connection returns.
+- **The server.** Both containers restart automatically, Docker starts at boot, a health check watches the app, container logs are size-limited, and the operating system installs security updates.
+- **What isn't covered.** One server is a single point of failure, there is no automatic alert when it goes down, and the accounts database isn't backed up off the machine (the journals aren't on the server at all).
+
 ## Scaling path
 
 Today it runs as one container with SQLite for accounts. Nothing is stateful except that database and the in-memory rate limiter, so:

@@ -8,6 +8,7 @@ services:
     build: .
     restart: unless-stopped
     env_file: .env
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }   # logs can't fill the disk
     volumes:
       # Accounts database lives here. Bind mount so backups can read it from the host.
       - ./data:/data
@@ -22,6 +23,7 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
     depends_on:
       - mindly
     environment:

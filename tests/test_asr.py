@@ -52,3 +52,39 @@ def test_hosted_speech_errors_are_reported_not_raised_as_http_errors(monkeypatch
     fake_endpoint(monkeypatch, down)
     with pytest.raises(asr.ASRError):
         asr.transcribe(audio)
+
+
+def test_hosted_speech_retries_a_busy_service(monkeypatch, audio):
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        if len(calls) < 3:
+            return httpx.Response(503)
+        return httpx.Response(200, json={"text": "hello there", "language": "en"})
+
+    fake_endpoint(monkeypatch, handler)
+    assert asr.transcribe(audio)["text"] == "hello there" and len(calls) == 3
+
+
+def test_hosted_speech_uses_the_fallback_model(monkeypatch, audio):
+    monkeypatch.setattr(config, "ASR_FALLBACK_MODEL", "whisper-large-v3")
+    models = []
+
+    def handler(request):
+        models.append(b"whisper-large-v3-turbo" in request.content)
+        if b"whisper-large-v3-turbo" in request.content:
+            return httpx.Response(500)
+        return httpx.Response(200, json={"text": "hello there", "language": "en"})
+
+    fake_endpoint(monkeypatch, handler)
+    assert asr.transcribe(audio)["text"] == "hello there"
+    assert models == [True, True, True, False]   # three tries on the main model, then the fallback
+
+
+def test_hosted_speech_does_not_retry_a_bad_key(monkeypatch, audio):
+    calls = []
+    fake_endpoint(monkeypatch, lambda r: calls.append(1) or httpx.Response(401))
+    with pytest.raises(asr.ASRError):
+        asr.transcribe(audio)
+    assert len(calls) == 1
