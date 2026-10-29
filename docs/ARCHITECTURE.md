@@ -147,7 +147,8 @@ The app depends on two hosted services (speech and language), so the first rule 
 - **Streaming.** A chat reply that fails before any words are sent is retried; one that fails halfway is not, because that would repeat words the person has already read.
 - **Nothing is lost.** Recordings are saved on the device before anything is sent, a failed step shows "Try again" with the recording kept, and an offline recording is queued and resumed when the connection returns.
 - **The server.** Both containers restart automatically, Docker starts at boot, a health check watches the app, container logs are size-limited, and the operating system installs security updates.
-- **What isn't covered.** One server is a single point of failure, there is no automatic alert when it goes down, and the accounts database isn't backed up off the machine (the journals aren't on the server at all).
+- **An uptime alert.** A scheduled GitHub Actions workflow (`.github/workflows/uptime.yml`) checks the live site every 10 minutes: the home page over valid HTTPS, `/api/health` (including that the model keys are set), and that the certificate has at least 7 days left. A failed check fails the run, and GitHub emails the repository owner.
+- **What isn't covered.** One server is a single point of failure, there is no automatic failover, and the accounts database isn't backed up off the machine (the journals aren't on the server at all).
 
 ## Scaling path
 
