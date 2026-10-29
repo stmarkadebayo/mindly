@@ -1,0 +1,4 @@
+# Optional: run Whisper on the server itself instead of a hosted endpoint.
+# It is a large install; skip it when ASR_API_KEY is set.
+faster-whisper==1.2.1
+av==18.1.0  # av 19 removed an argument that faster-whisper 1.2 still uses
