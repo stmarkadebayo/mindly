@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import * as store from "@/lib/store";
 import * as pipeline from "@/lib/pipeline";
+import { addSample, DEMO_EMAIL } from "@/lib/sample";
 import { checkPin, clearPin, hasPin, LOCK_AFTER_MS } from "@/lib/lock";
 import type { User } from "@/lib/types";
 import { Orb } from "./Orb";
@@ -37,6 +38,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const signedIn = useCallback(async (u: User) => {
     await store.open(u.id);
+    if (u.email.toLowerCase() === DEMO_EMAIL) await addSample().catch(() => {}); // judges land on a journal that is already full
     pipeline.setLanguage(u.profile.speechLanguage || "");
     setMeState(u);
     setLocked(hasPin(u.id));

@@ -3,7 +3,6 @@ import Link from "next/link";
 import { Mark, Sparkles } from "@/components/Hand";
 import { Icon, type IconName } from "@/components/Icon";
 import { Orb } from "@/components/Orb";
-import { WANT_SAMPLE } from "@/lib/sample";
 
 const REPO = "https://github.com/stmarkadebayo/mindly";
 
@@ -46,9 +45,6 @@ export default function Welcome() {
             <Link className="btn btn-primary btn-block" href="/auth/?mode=signup">Get started</Link>
             <Link className="btn btn-plain btn-block" href="/auth/?mode=signin">I already have an account</Link>
           </div>
-          <p className="sample-link">
-            Just looking? <Link href="/auth/?mode=signup" onClick={() => { try { localStorage.setItem(WANT_SAMPLE, "1"); } catch { /* not available */ } }}>Sign up and start with a sample journal</Link>
-          </p>
         </div>
       </section>
 

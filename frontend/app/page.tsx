@@ -10,7 +10,6 @@ import { useMe } from "@/components/Session";
 import { VoiceDock, type VoiceHandle } from "@/components/VoiceDock";
 import { defaultPrompts, salutation } from "@/lib/content";
 import * as pipeline from "@/lib/pipeline";
-import { addSample, WANT_SAMPLE } from "@/lib/sample";
 import type { Recording } from "@/lib/recorder";
 import * as store from "@/lib/store";
 import { plain } from "@/lib/text";
@@ -36,10 +35,7 @@ export default function Home() {
   useEffect(() => {
     mounted.current = true;
     const load = () => store.entries().then(setEntries);
-    // The landing page's "sample journal" link sets a flag; honour it once, on a brand-new journal.
-    let wanted = false;
-    try { wanted = localStorage.getItem(WANT_SAMPLE) === "1"; localStorage.removeItem(WANT_SAMPLE); } catch { /* not available */ }
-    if (wanted) store.entries().then((all) => (all.length ? undefined : addSample())).then(() => window.dispatchEvent(new Event("mindly:entry"))); else load();
+    load();
     window.addEventListener("mindly:entry", load);
     return () => { mounted.current = false; window.removeEventListener("mindly:entry", load); };
   }, []);

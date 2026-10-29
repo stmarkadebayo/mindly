@@ -62,5 +62,5 @@ export async function removeSample(): Promise<number> {
   return mine.length;
 }
 
-/** Set by the landing page, so the sample loads once the new account reaches Home. */
-export const WANT_SAMPLE = "mindly.wantSample";
+/** The account given to judges. Signing in as it fills this device's journal with the sample entries, because a journal lives in the browser, not on the server. */
+export const DEMO_EMAIL = "demo@mindly.test";

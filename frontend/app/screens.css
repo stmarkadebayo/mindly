@@ -386,6 +386,3 @@
 .sample-offer { display: grid; justify-items: center; gap: var(--sp2); margin: var(--sp4) auto 0; max-width: 320px; text-align: center; }
 .sample-offer .footnote { margin: 0; }
 .pill { display: inline-block; margin-left: var(--sp2); padding: 0 var(--sp2); border-radius: 999px; background: var(--lavender-soft); color: var(--lavender-ink); font-size: 11px; font-weight: 600; line-height: 18px; vertical-align: 1px; }
-.sample-link { display: none; margin: var(--sp4) 0 0; font-size: 14px; color: var(--muted); }
-.sample-link a { color: var(--lavender-ink); }
-@media (min-width: 700px) { .sample-link { display: block; } }
