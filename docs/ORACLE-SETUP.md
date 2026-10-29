@@ -1,5 +1,7 @@
 # Oracle Cloud setup (Always Free)
 
+> An alternative host. The live Mindly app runs on AWS; see [AWS-SETUP.md](AWS-SETUP.md).
+
 This gets Mindly running on one Oracle Always Free VM with HTTPS, a persistent accounts database, and daily backups. Budget about an hour, most of it waiting for the first Docker build.
 
 What you end up with:

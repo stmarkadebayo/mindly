@@ -15,6 +15,12 @@ One container serves the API and the web app. It needs HTTPS (browsers only allo
 
 There is nothing else to connect: no database server, object store, email service or queue.
 
+## Where Mindly runs today
+
+The live app (https://mindly-ai.duckdns.org) runs on **one AWS EC2 instance** (t4g.small, Ubuntu 24.04, 20 GiB encrypted disk, Elastic IP) with Docker and Caddy, using the same `docker-compose.yml` and `deploy/Caddyfile` as this repo. The domain is a free DuckDNS name pointing at the Elastic IP. Full steps are in [AWS-SETUP.md](AWS-SETUP.md).
+
+We chose a single VM because the accounts database is SQLite on a disk and the app needs HTTPS for the microphone. It also stays well within AWS credits. App Runner and similar managed services aren't available in every Region.
+
 ## Run the container
 
 ```bash

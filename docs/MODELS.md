@@ -20,14 +20,21 @@ Mindly uses two open-weight models. Nothing in the challenge brief requires us t
 | Language | Speech in | Chat replies |
 |---|---|---|
 | English, Nigerian English | Good | Good |
-| Pidgin | Short phrases transcribe reasonably; longer speech comes out as approximate English | Natural in our tests |
+| Pidgin | Short phrases transcribe reasonably, helped by a vocabulary hint ("abeg", "wahala", "dey", "wetin"); longer speech comes out as approximate English | Natural in our tests |
 | Yoruba, Hausa | Experimental in Whisper | Plausible; needs review by native speakers |
 | Igbo | Not supported by Whisper | Plausible; needs review by native speakers |
 
 Next step for speech: a Nigerian code-switching model such as yecsASR (Yoruba and English), or fine-tuning Whisper on Nigerian speech.
 
+## How we use Whisper well
+
+- A short hint ("Nigerian English and Pidgin: abeg, wahala, dey, wetin, oga.") is sent with every hosted request. It fixes Pidgin spellings. Longer hints made the model hallucinate on noise, so we kept it short and added a confidence filter that drops low-confidence segments.
+- The language setting (Yoruba, Hausa or auto) is passed through when the user picks it; for anything Whisper doesn't know, it auto-detects.
+- The writing model then fixes only obvious recognition errors and never translates.
+
 ## Licence compliance
 
 - Whisper (MIT): no usage restrictions beyond the licence text. The model card advises against transcribing people without their consent, so Mindly is built for the user's own voice. Onboarding asks users to confirm this and the Terms page states it.
 - Gemma 4 (Apache 2.0): checked on the model card on 29 October 2026. The card links Google's Gemma 4 licence page; the team should read it once before launch. Users agree in onboarding and in the Terms to use the models within their licences.
+- On 29 October 2026 we confirmed on the Hugging Face model pages that [openai/whisper-large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo) is MIT and [google/gemma-4-26B-A4B-it](https://huggingface.co/google/gemma-4-26B-A4B-it) is Apache 2.0 and not gated.
 - OpenRouter requests are restricted to providers that don't collect or train on prompts.

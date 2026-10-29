@@ -10,8 +10,17 @@ IndexedDB, one database per account:                                /api/auth/* 
 Orb (Web Audio FFT → canvas)                                        /api/write        text  ──▶ Gemma 4 ──▶ page + title
 Recorder (MediaRecorder, 32 kbps, 15 min cap)                       /api/companion    text + a few entries ──▶ Gemma 4
 Pipeline: saved → transcribing → writing → done                       /stream         the same, as it is written
-  (queued when offline, resumed when back online)                   accounts.db       users + hashed session tokens only
+  (queued when offline, resumed when back online)                   /api/insights     recent entries ──▶ Gemma 4 ──▶ themes, patterns, one thing to try
+                                                                    accounts.db       users + hashed session tokens only
 ```
+
+## The web app
+
+- **Static export.** Next.js builds to plain files (`frontend/out`) that the API serves, so the whole product is one container.
+- **One codebase, three layouts.** Under 700 px it is the original phone layout. From 700 px a roomier single column. From 1100 px a shell (`components/Shell.tsx`) puts the journal in a sidebar and opens Home, an entry, Chat, Insights and Settings in the pane beside it. On narrow screens the shell's wrappers are `display: contents`, so nothing changes. On desktop the pane is a containing block, so the fixed recording orb, composer and floating buttons centre on the pane instead of the window.
+- **The voice dock** (`components/VoiceDock.tsx`) measures its anchor against the pane, supports tap-to-pause on the orb, and listens for keyboard shortcuts (Space, Enter, Esc) when no text field has focus.
+- **A landing page** for signed-out visitors on tablet and desktop (`app/welcome/page.tsx`); phones keep the original splash. Social previews use Open Graph tags and a PNG image (`public/og.png`) because most chat apps ignore SVG icons.
+- **Offline.** A service worker caches pages and assets as they load (network first) so Mindly opens and records without a connection.
 
 ## Tenancy: one account, one private journal
 
@@ -42,12 +51,18 @@ The browser decides which entries a chat request carries (`frontend/lib/context.
 | Caching | API responses are `Cache-Control: no-store`; app pages are revalidated on every load so a new deploy shows up at once; hashed asset files are cached for a year |
 | Model providers | On OpenRouter, requests are restricted to providers that don't collect or train on prompts (`LLM_DENY_DATA_COLLECTION`, on by default). Don't enable OpenRouter's "Broadcast" trace export: it would copy prompts, which contain journal text, to a third-party tool |
 | Abuse | audio capped at 25 MB; JSON bodies bounded; chat context capped at 400 KB; per-account daily AI quota |
-| Prompt injection | transcripts and journal text are passed as delimited data; the model cannot reach anything except two read-only search tools over the entries it was sent; every citation it makes is checked against entries it was actually shown |
+| Prompt injection | transcripts and journal text are passed as delimited data (we tested an entry that says "ignore all previous instructions"; the model ignored it); the model cannot reach anything except two read-only search tools over the entries it was sent; every citation it makes is checked against entries it was actually shown, in `[#n]` or `[n]` form |
 | Secrets | environment variables only; `.env` is git-ignored; the API never logs request bodies |
 | Safety | crisis language adds a support card with Nigerian helplines; the companion has a written protocol and refuses to act as a general assistant |
 | API surface | `/docs` and `/openapi.json` are disabled |
 
 Known gaps (see the README's limitations): the app lock is a screen lock, not encryption at rest; the journal is tied to one browser until encrypted sync exists.
+
+## Speech and writing quality
+
+- **A vocabulary hint for the speech model.** Every hosted transcription carries a short prompt ("Nigerian English and Pidgin: abeg, wahala, dey, wetin, oga."). In a test clip this changed "a beg ... I day try" into "abeg ... I dey try". A longer prompt made Whisper invent sentences from pure noise, so it is kept short.
+- **Confidence filter.** Segments with an average log-probability below -1.3 are dropped. Invented text from noise scored about -1.8; real speech about -0.3. Silent or noisy recordings come back empty and the app says "no words came through".
+- **The writer fixes only the obvious.** It corrects clear recognition slips (homophones, broken words, times like "two thirty") and keeps the person's most-used spelling of a name, but never guesses a name, number or place, and drops artefacts such as "Thank you for watching".
 
 ## Latency
 
@@ -72,7 +87,11 @@ Next, in order of impact:
 
 ## Chat
 
-The companion's reply is streamed as newline-delimited JSON, so the first words appear in about a second (measured 0.6–1.3 s, with the whole reply done in 1.6–2.2 s) instead of after the full reply. The user's message is saved and shown before the request starts; the reply is capped at 500 tokens; related entries are found with a small in-memory full-text index built per request, so the model usually answers on the first round without using tools; and if it does call a tool, the draft is reset and the final answer replaces it with citations checked.
+The companion's reply is streamed as newline-delimited JSON, so the first words appear in about a second (measured 0.6–1.3 s, with the whole reply done in 1.6–2.2 s) instead of after the full reply. The user's message is saved and shown before the request starts; the reply is capped at 500 tokens; related entries are found with a small in-memory full-text index built per request (Porter stemming, so "exams" finds "exam"), so the model usually answers on the first round without using tools; and if it does call a tool, the draft is reset and the final answer replaces it with citations checked.
+
+## How it runs today
+
+One AWS EC2 instance (t4g.small, Ubuntu, in the account's Region) runs the Docker image and Caddy, which gets and renews the HTTPS certificate. The accounts database is on the instance's encrypted 20 GiB disk. Updating is `git archive HEAD | ssh ... tar -x` followed by `docker compose up -d --build`. See [AWS-SETUP.md](AWS-SETUP.md).
 
 ## Scaling path
 

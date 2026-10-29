@@ -1,5 +1,7 @@
 # AWS setup (EC2, trial credits)
 
+This is how the live Mindly app is deployed. **Your project's Region is fixed by your contact address** (ours is `eu-north-1`, Stockholm), and resources can't be created in other Regions; confirm yours in AWS Settings before you start. Where a step below names a different Region, use your own.
+
 This runs Mindly on one EC2 virtual server with Docker, HTTPS, and nightly backups. It uses the same `docker-compose.yml`, `deploy/Caddyfile`, and `deploy/backup.sh` as the Oracle runbook, so start there for background. This file covers only what differs on AWS.
 
 **Important timing.** The AWS Free plan account closes 6 months after you open it, or when the credits run out, whichever comes first. Your server and its disk are part of the account. Plan the migration (section 10) before then, or upgrade to a Paid plan.
@@ -8,17 +10,18 @@ This runs Mindly on one EC2 virtual server with Docker, HTTPS, and nightly backu
 
 ## 1. Create the account and budget alert
 
-1. Create the account at aws.amazon.com. Choose the **Free plan** for credits.
+1. Create the account at aws.amazon.com. Choose the **Free plan** for credits. You can check your remaining credit with `aws freetier get-account-plan-state` (the live account showed $100 and an expiry date in April 2027).
 2. Open **Billing and Cost Management → Budgets → Create budget**. Choose a monthly cost budget of **$5**, with an email alert at 80%. This catches surprises even while you have credits.
 3. Note the date you opened the account. The 6-month deadline starts from that date. Put a reminder in your calendar for one month before it.
 
 ## 2. Launch the server
 
-In the EC2 console, choose your region (**Africa (Cape Town)** `af-south-1` is closest to Nigeria, if it's available on your plan; otherwise **Europe (London)** `eu-west-2`). Then **Launch instance**:
+In the EC2 console, use your project's Region (the live app uses **Europe (Stockholm)** `eu-north-1`). Then **Launch instance**:
 
 - **Name:** `mindly`
 - **AMI:** Ubuntu Server **24.04 LTS**, **64-bit (Arm)**
-- **Instance type:** **t4g.small** (2 GB RAM, Arm). The web app build needs more memory than the 1 GB t4g.micro gives. If the AMI or type isn't available on your plan, use t3.small (x86) and build the same way.
+- **Instance type:** **t4g.small** (2 GB RAM, Arm), as used by the live app. The web app build needs more memory than the 1 GB t4g.micro gives. If the type isn't available on your plan, use t3.small (x86) and build the same way.
+- **Metadata:** require IMDSv2 (`HttpTokens=required`).
 - **Key pair:** create a new RSA key pair and download the `.pem` file. Keep it safe.
 - **Network settings → Create security group** with these inbound rules:
 
@@ -34,7 +37,7 @@ Launch it. Then **EC2 → Elastic IPs → Allocate → Associate** with this ins
 
 ## 3. Point your domain at it
 
-Use the same free domain as the Oracle runbook (duckdns.org, or your own domain). Set it to the **Elastic IP**, not the temporary public address.
+Use a free name from duckdns.org (the live app uses `mindly-ai.duckdns.org`), or your own domain. Set it to the **Elastic IP**, not the temporary public address. No domain yet? `<elastic-ip-with-dashes>.sslip.io` (for example `13-63-127-53.sslip.io`) also gets a real certificate from Caddy.
 
 Check it resolves from the server (after step 4 connects):
 
@@ -75,7 +78,13 @@ Ubuntu on EC2 has no firewall by default, so the security group in step 2 is the
 
 ## 5. Copy the code
 
-From your laptop, in the `mindly` folder (same command as the Oracle runbook, with your Elastic IP):
+From your laptop, in the `mindly` folder, either rsync the working tree (command below) or, to deploy exactly what is committed (this is what we do), stream the committed files:
+
+```bash
+git archive HEAD | ssh -i path/to/your-key.pem ubuntu@YOUR_ELASTIC_IP 'tar -x -C /opt/mindly/app'
+```
+
+The rsync alternative, with your Elastic IP:
 
 ```bash
 rsync -av \
@@ -182,7 +191,7 @@ df -h                                      # check disk space
 
 ## Updating the app
 
-From your laptop, rerun the `rsync` command in step 5. Then on the server:
+From your laptop, rerun the `git archive` (or `rsync`) command in step 5. Then on the server:
 
 ```bash
 cd /opt/mindly/app
@@ -195,4 +204,4 @@ Your data and `.env` are unaffected.
 
 - **Only one instance.** The accounts database is SQLite on this server's disk, so run one copy of the app.
 - **Costs.** The server, disk and Elastic IP (while attached) are covered by credits. Watch the budget alert, and remember to terminate the server if you stop using it.
-- **Security.** Keep SSH limited to your IP. Keep the OS updated. Only ports 80 and 443 are public; port 8080 stays inside Docker.
+- **Security.** Keep SSH limited to your IP (if your IP changes, update the security-group rule). Keep the OS updated. Only ports 80 and 443 are public; port 8080 stays inside Docker.
