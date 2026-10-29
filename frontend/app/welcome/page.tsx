@@ -14,7 +14,7 @@ const STEPS: { icon: IconName; title: string; body: string }[] = [
 
 const PRIVACY: { icon: IconName; title: string; body: string }[] = [
   { icon: "device", title: "Your journal stays on your device", body: "Entries, recordings and conversations live in your browser's private storage, not on a server." },
-  { icon: "mic", title: "Heard, written, forgotten", body: "Audio and text reach the server only long enough to be transcribed and written. Nothing is kept or used to train a model." },
+  { icon: "mic", title: "Heard, written, forgotten", body: "Audio and text pass through to the open models only long enough to be transcribed and written. Mindly keeps none of it and never uses it for training." },
   { icon: "lock", title: "Yours alone", body: "Add a PIN lock, export everything, or wipe it all with one tap." },
 ];
 

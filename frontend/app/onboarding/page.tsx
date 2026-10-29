@@ -72,7 +72,7 @@ export default function Onboarding() {
           <h1 className="title q">Before you start</h1>
           <ul className="facts">
             <li><span className="ic"><Icon name="device" /></span><div><b>Your journal lives on this device.</b><div className="subhead">Recordings and pages are saved in this browser, not on Mindly&apos;s servers.</div></div></li>
-            <li><span className="ic"><Icon name="spark" /></span><div><b>AI helps when you record or talk.</b><div className="subhead">Audio is turned into text on our server, then an open AI model writes your page or replies. Nothing is kept afterwards or used for training.</div></div></li>
+            <li><span className="ic"><Icon name="spark" /></span><div><b>AI helps when you record or talk.</b><div className="subhead">Your audio goes through our server to an open speech model that turns it into text, then an open AI model writes your page or replies. Mindly keeps none of it and never uses it for training. The model hosts process it under their own terms.</div></div></li>
             <li><span className="ic"><Icon name="heart" /></span><div><b>Mindly isn&apos;t therapy.</b><div className="subhead">It&apos;s a journal with a thoughtful companion, not a medical or crisis service. If you&apos;re in danger, call 112.</div></div></li>
             <li><span className="ic"><Icon name="mic" /></span><div><b>Record only yourself, within the model licences.</b><div className="subhead">Don&apos;t transcribe other people without their consent. Mindly&apos;s open models (Whisper, Gemma) come with licences and usage rules you agree to follow.</div></div></li>
           </ul>

@@ -12,7 +12,7 @@ export default function Privacy() {
       </ul>
       <h2>What&apos;s sent, and to whom</h2>
       <ul>
-        <li><b>When you record</b>, the audio goes to our server, where an open Whisper model turns it into text. The file is deleted straight after.</li>
+        <li><b>When you record</b>, the audio goes to our server, which passes it to an open Whisper model (hosted by Groq) that turns it into text. Our server deletes the file straight after.</li>
         <li><b>To write your page</b>, the transcript goes to Gemma 4, an open-weight model from Google, run by OpenRouter.</li>
         <li><b>When you reflect or talk</b>, your message and your most relevant entries go to the same model, so it can ground what it says in your own words.</li>
       </ul>
