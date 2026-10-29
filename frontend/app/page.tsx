@@ -2,15 +2,16 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { EntryList, matches } from "@/components/EntryList";
 import { Mark, Underline } from "@/components/Hand";
 import { Icon } from "@/components/Icon";
 import { useMe } from "@/components/Session";
 import { VoiceDock, type VoiceHandle } from "@/components/VoiceDock";
-import { dayLabel, defaultPrompts, moodColor, salutation, timeLabel } from "@/lib/content";
+import { defaultPrompts, salutation } from "@/lib/content";
 import * as pipeline from "@/lib/pipeline";
 import type { Recording } from "@/lib/recorder";
 import * as store from "@/lib/store";
-import { excerpt, plain } from "@/lib/text";
+import { plain } from "@/lib/text";
 import type { Entry } from "@/lib/types";
 
 const SEARCH_FROM = 8; // a handful of entries doesn't need a search box
@@ -60,17 +61,7 @@ export default function Home() {
   };
 
   const real = (entries ?? []).filter((e) => e.body.trim() || e.title || e.segments.length); // never show an empty shell
-  const shown = real.filter((e) => {
-    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
-    return words.every((w) => `${e.title} ${plain(e.body)} ${e.prompt ?? ""}`.toLowerCase().includes(w));
-  });
-  const groups: [string, Entry[]][] = [];
-  for (const e of shown) {
-    const label = dayLabel(e.created);
-    if (groups.at(-1)?.[0] !== label) groups.push([label, []]);
-    groups.at(-1)![1].push(e);
-  }
-
+  const shown = real.filter((e) => matches(e, q, plain));
   // Hidden until the journal has loaded and the zone is placed, so nothing jumps on arrival.
   const ready = entries !== null && zoneTop !== null;
 
@@ -109,29 +100,8 @@ export default function Home() {
         {real.length >= SEARCH_FROM && (
           <div className="search"><Icon name="search" /><input className="input" type="search" placeholder="Search your journal" aria-label="Search your journal" value={q} onChange={(e) => setQ(e.target.value)} /></div>
         )}
-        {real.length > 0 && groups.length === 0 && <p className="empty-note">Nothing matches &ldquo;{q}&rdquo;.</p>}
-        {groups.map(([label, list]) => (
-          <section key={label}>
-            <h2 className="section-label">{label}</h2>
-            <div className="group">
-              {list.map((e) => {
-                const pending = e.segments.some((s) => ["saved", "transcribing", "writing", "queued"].includes(s.status));
-                const failed = e.segments.some((s) => s.status === "failed");
-                const silent = !e.body.trim() && !e.title && e.segments.length > 0 && e.segments.every((s) => s.status === "no_speech");
-                return (
-                  <Link key={e.id} className="row entry-row" href={`/entry/?id=${e.id}`}>
-                    <span className="dot" style={{ background: moodColor(e.mood) }} aria-hidden="true" />
-                    <span className="grow">
-                      <span className="t" style={{ display: "block" }}>{e.title || (silent ? "Nothing heard" : pending ? "Writing your entry…" : e.prompt || "Untitled")}</span>
-                      <span className="x">{excerpt(e.body) || (silent ? "No words came through in this recording." : failed ? "Couldn't finish writing this one. Tap to try again." : pending ? "" : "No words yet.")}</span>
-                    </span>
-                    <span className="time">{timeLabel(e.created)}</span>
-                  </Link>
-                );
-              })}
-            </div>
-          </section>
-        ))}
+        {real.length > 0 && shown.length === 0 && <p className="empty-note">Nothing matches &ldquo;{q}&rdquo;.</p>}
+        <EntryList entries={shown} />
       </div>
 
       <Link className="chat-pill glass chrome" href="/talk/" aria-label="Chat with Mindly"><Mark size={22} />Chat</Link>

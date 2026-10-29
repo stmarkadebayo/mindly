@@ -54,7 +54,11 @@ export const VoiceDock = forwardRef<VoiceHandle, Props>(function VoiceDock(
     if (!el) return;
     const measure = () => {
       const r = el.getBoundingClientRect();
-      setSpot({ ox: r.left + r.width / 2 - innerWidth / 2, oy: innerHeight - (r.top + r.height / 2), size: r.width });
+      // On wide screens the dock is positioned inside the pane beside the sidebar, not the whole window.
+      const pane = el.closest<HTMLElement>("[data-pane]");
+      const h = pane && getComputedStyle(pane).display !== "contents" ? pane.getBoundingClientRect() : null;
+      const left = h?.left ?? 0, width = h?.width ?? innerWidth, bottom = h?.bottom ?? innerHeight;
+      setSpot({ ox: r.left + r.width / 2 - (left + width / 2), oy: bottom - (r.top + r.height / 2), size: r.width });
     };
     measure();
     const watcher = new ResizeObserver(measure);
@@ -131,6 +135,25 @@ export const VoiceDock = forwardRef<VoiceHandle, Props>(function VoiceDock(
     if (rec.state === "recording") { rec.pause(); setPaused(true); } else { rec.resume(); setPaused(false); }
   };
 
+  // Keyboard: while recording, Space pauses or resumes, Enter finishes and Esc discards. On Home, Space starts.
+  const keys = useRef({ live, start, cancel, togglePause, finish });
+  keys.current = { live, start, cancel, togglePause, finish };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest("input, textarea, select, button, a, [contenteditable]") || document.querySelector(".scrim")) return;
+      const k = keys.current;
+      if (k.live) {
+        if (e.code === "Space") { e.preventDefault(); k.togglePause(); }
+        else if (e.key === "Enter") { e.preventDefault(); k.finish("done"); }
+        else if (e.key === "Escape") { e.preventDefault(); k.cancel(); }
+      } else if (e.code === "Space" && anchor) { e.preventDefault(); k.start(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [anchor]);
+
   useImperativeHandle(ref, () => ({ start }));
   // Leaving mid-recording keeps what was said.
   useEffect(() => () => { if (recorder.current) finishRef.current("interrupted"); }, []);
@@ -146,7 +169,7 @@ export const VoiceDock = forwardRef<VoiceHandle, Props>(function VoiceDock(
         <div className="listening" aria-live="polite">
           <span className="hand">{live ? (paused ? "Paused" : "I'm listening") : ""}</span>
           {live && prompt && <span className="prompt">{prompt}</span>}
-          {live && <small>Tap the orb to pause · ✓ to finish</small>}
+          {live && <small>Tap the orb to pause · ✓ to finish<span className="kbd-hint"> · Space pauses, Esc discards</span></small>}
         </div>
         <button className="orb-btn" aria-label={live ? (paused ? "Resume recording" : "Pause recording") : "Start talking"} onClick={() => { if (live) togglePause(); else start(); }}>
           <Orb stream={stream} paused={paused} idle={live ? 0.6 : 1.2} pad={1.7} />
