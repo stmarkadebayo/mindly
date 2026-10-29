@@ -254,3 +254,17 @@ def test_citation_without_hash_is_still_grounded():
     refs.seen.add(1)
     text, cited = refs.ground("Sleep was hard [1] and then [2].")
     assert "[#id-a]" in text and "[2]" not in text and cited == ["id-a"]
+
+
+def test_filler_only_transcript_is_not_an_error():
+    client, seen = scripted([{"role": "assistant", "content": '{"title": "", "body": ""}'}])
+    out = write_entry("um uh you know", client=client)
+    assert out == {"title": "", "body": "", "empty": True} and len(seen) == 1   # nothing worth a retry
+
+
+def test_blank_page_for_a_real_transcript_is_retried_once():
+    blank = {"role": "assistant", "content": '{"title": "", "body": ""}'}
+    good = {"role": "assistant", "content": '{"title": "Tired", "body": "I was tired all day."}'}
+    client, seen = scripted([blank, good])
+    out = write_entry("I was so tired all day and I just wanted to lie down and not talk to anyone", client=client)
+    assert out["body"] == "I was tired all day." and len(seen) == 2

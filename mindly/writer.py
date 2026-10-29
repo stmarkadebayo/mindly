@@ -34,12 +34,18 @@ Write it the way the person would have written it themselves:
 Respond with only a JSON object: {"title": "...", "body": "..."}. Separate paragraphs in body with \\n\\n.
 The title is short and plain (2 to 6 words), grounded in what was said."""
 
+MIN_WORDS_TO_RETRY = 8  # a longer transcript with a blank page is probably a model slip, so ask once more
+
 CONTINUE_NOTE = ("This recording continues a page they already started; write only the new part. "
                  "Return the same JSON shape; the title is ignored.")
 
 
 class WritingError(RuntimeError):
     pass
+
+
+class EmptyPage(WritingError):
+    """The model found nothing worth writing (the transcript was only fillers or a stray phrase)."""
 
 
 def parse(raw: str) -> dict:
@@ -54,7 +60,7 @@ def parse(raw: str) -> dict:
     title = str(data.get("title", "")).strip().strip('"')
     body = str(data.get("body", "")).strip()
     if not body:
-        raise WritingError("The model returned an empty page.")
+        raise EmptyPage("The model returned an empty page.")
     return {"title": title[:80] or "Untitled entry", "body": body}
 
 
@@ -64,11 +70,14 @@ def write_entry(transcript: str, prompt: str | None = None, continuing: bool = F
         context.append(f'They chose to answer this journaling prompt: "{prompt}". Do not repeat the prompt.')
     if continuing:
         context.append(CONTINUE_NOTE)
-    message = llm.chat(
-        config.WRITER_MODEL,
-        [{"role": "system", "content": SYSTEM_PROMPT + ("\n\n" + "\n".join(context) if context else "")},
-         {"role": "user", "content": f"<transcript>\n{transcript}\n</transcript>"}],
-        temperature=0.2,
-        client=client,
-    )
-    return parse(message.get("content") or "")
+    messages = [{"role": "system", "content": SYSTEM_PROMPT + ("\n\n" + "\n".join(context) if context else "")},
+                {"role": "user", "content": f"<transcript>\n{transcript}\n</transcript>"}]
+    for attempt in range(2):
+        message = llm.chat(config.WRITER_MODEL, messages, temperature=0.2 if attempt == 0 else 0.5, client=client)
+        try:
+            return parse(message.get("content") or "")
+        except EmptyPage:
+            if len(transcript.split()) < MIN_WORDS_TO_RETRY:
+                break  # fillers or a stray phrase: there is genuinely nothing to write
+    # Not an error: the person gets "no words came through" and keeps the recording.
+    return {"title": "", "body": "", "empty": True}

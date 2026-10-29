@@ -61,10 +61,11 @@ export async function process(entryId: string, segId: string) {
     await setSegment(entryId, segId, { status: "writing" });
     entry = (await store.entry(entryId))!;
     seg = entry.segments.find((s) => s.id === segId)!;
-    const written = await api<{ title: string; body: string; support: boolean }>("/api/write", {
+    const written = await api<{ title: string; body: string; support: boolean; empty?: boolean }>("/api/write", {
       method: "POST",
       json: { transcript: seg.transcript, prompt: entry.prompt, continuing: Boolean(entry.body.trim()) },
     });
+    if (written.empty) return void (await setSegment(entryId, segId, { status: "no_speech", error: null }));
     const title = entry.title ? null : written.title;
     if (!writeHook?.(entryId, written.body, title)) {
       await store.updateEntry(entryId, (e) => {
