@@ -71,7 +71,7 @@ function Auth() {
   }, [config.google_client_id, signup]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <main className="screen">
+    <main className="screen auth-page">
       <TopBar back="/welcome/" />
       <section className="auth">
         <h1 className="large-title">{signup ? "Make it yours" : "Welcome back"}</h1>
