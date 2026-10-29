@@ -26,7 +26,7 @@ export function EntryList({ entries, activeId }: { entries: Entry[]; activeId?: 
                 <Link key={e.id} className="row entry-row" href={`/entry/?id=${e.id}`} aria-current={e.id === activeId ? "page" : undefined}>
                   <span className="dot" style={{ background: moodColor(e.mood) }} aria-hidden="true" />
                   <span className="grow">
-                    <span className="t" style={{ display: "block" }}>{e.title || (silent ? "Nothing heard" : pending ? "Writing your entry…" : e.prompt || "Untitled")}</span>
+                    <span className="t" style={{ display: "block" }}>{e.title || (silent ? "Nothing heard" : pending ? "Writing your entry…" : e.prompt || "Untitled")}{e.sample && <span className="pill">Sample</span>}</span>
                     <span className="x">{excerpt(e.body) || (silent ? "No words came through in this recording." : failed ? "Couldn't finish writing this one. Tap to try again." : pending ? "" : "No words yet.")}</span>
                   </span>
                   <span className="time">{timeLabel(e.created)}</span>

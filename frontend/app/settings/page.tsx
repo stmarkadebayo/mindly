@@ -10,6 +10,7 @@ import { useUI } from "@/components/UI";
 import { api } from "@/lib/api";
 import { clearPin, hasPin, setPin } from "@/lib/lock";
 import * as pipeline from "@/lib/pipeline";
+import * as sample from "@/lib/sample";
 import * as store from "@/lib/store";
 import type { User } from "@/lib/types";
 
@@ -23,10 +24,12 @@ export default function Settings() {
   const [name, setName] = useState(me.name);
   const [theme, setTheme] = useState<Theme>("system");
   const [locked, setLocked] = useState(false);
+  const [samples, setSamples] = useState(0);
 
   useEffect(() => {
     try { setTheme((localStorage.getItem("mindly.theme") as Theme) || "system"); } catch {}
     setLocked(hasPin(me.id));
+    sample.sampleCount().then(setSamples).catch(() => {});
   }, [me.id]);
 
   const update = async (patch: { name?: string; profile?: User["profile"] }, message: string) => {
@@ -58,6 +61,14 @@ export default function Settings() {
     const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
     Object.assign(document.createElement("a"), { href: url, download: `mindly-journal-${new Date().toISOString().slice(0, 10)}.json` }).click();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
+
+  const removeSamples = async () => {
+    if (!(await confirm({ title: "Remove the sample entries?", body: "The example entries are deleted, including any changes you made to them. Your own entries stay.", action: "Remove", cancel: "Keep them" }))) return;
+    const n = await sample.removeSample();
+    setSamples(0);
+    window.dispatchEvent(new Event("mindly:entry"));
+    toast(n ? "Sample entries removed" : "No sample entries to remove");
   };
 
   const wipe = async () => {
@@ -113,6 +124,7 @@ export default function Settings() {
         <button className="row" onClick={lockSheet}><span className="grow">App lock</span><span className="detail">{locked ? "On" : "Off"}</span><span className="chev"><Icon name="chev" /></span></button>
         <Link className="row" href="/privacy/"><span className="grow">How your data is handled</span><span className="chev"><Icon name="chev" /></span></Link>
         <button className="row" onClick={exportJournal}><span className="grow">Export journal</span><span className="chev"><Icon name="chev" /></span></button>
+        {samples > 0 && <button className="row" onClick={removeSamples}><span className="grow">Remove sample entries</span><span className="detail">{samples}</span></button>}
         <button className="row btn-danger" onClick={wipe}><span className="grow">Delete journal from this device</span></button>
       </div>
 

@@ -3,12 +3,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { EntryList, matches } from "@/components/EntryList";
+import { SampleOffer } from "@/components/SampleOffer";
 import { Mark, Underline } from "@/components/Hand";
 import { Icon } from "@/components/Icon";
 import { useMe } from "@/components/Session";
 import { VoiceDock, type VoiceHandle } from "@/components/VoiceDock";
 import { defaultPrompts, salutation } from "@/lib/content";
 import * as pipeline from "@/lib/pipeline";
+import { addSample, WANT_SAMPLE } from "@/lib/sample";
 import type { Recording } from "@/lib/recorder";
 import * as store from "@/lib/store";
 import { plain } from "@/lib/text";
@@ -34,7 +36,10 @@ export default function Home() {
   useEffect(() => {
     mounted.current = true;
     const load = () => store.entries().then(setEntries);
-    load();
+    // The landing page's "sample journal" link sets a flag; honour it once, on a brand-new journal.
+    let wanted = false;
+    try { wanted = localStorage.getItem(WANT_SAMPLE) === "1"; localStorage.removeItem(WANT_SAMPLE); } catch { /* not available */ }
+    if (wanted) store.entries().then((all) => (all.length ? undefined : addSample())).then(() => window.dispatchEvent(new Event("mindly:entry"))); else load();
     window.addEventListener("mindly:entry", load);
     return () => { mounted.current = false; window.removeEventListener("mindly:entry", load); };
   }, []);
@@ -96,7 +101,7 @@ export default function Home() {
       </div>
 
       <div className="entries-zone recede" style={{ top: zoneTop ?? undefined }} role="region" aria-label="Your entries">
-        {real.length === 0 && <p className="empty-note">Your entries will gather here.</p>}
+        {real.length === 0 && <><p className="empty-note">Your entries will gather here.</p><SampleOffer /></>}
         {real.length >= SEARCH_FROM && (
           <div className="search"><Icon name="search" /><input className="input" type="search" placeholder="Search your journal" aria-label="Search your journal" value={q} onChange={(e) => setQ(e.target.value)} /></div>
         )}

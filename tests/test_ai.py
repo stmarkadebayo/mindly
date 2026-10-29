@@ -216,14 +216,23 @@ def test_companion_prompt_is_helpful_and_multilingual():
 def test_insights_keep_only_citations_the_model_was_shown():
     from mindly.insights import insights
     reply = {"content": json.dumps({"headline": "Sleep keeps coming up.",
-                                    "themes": [{"label": "Sleep", "ids": ["a1", "c3", "ghost"]}, {"label": "Fake", "ids": ["ghost"]}],
-                                    "noticed": [{"text": "Walks seem to help [b2].", "ids": ["b2", "nope"]}], "try": "Walk after lunch."})}
+                                    "themes": [{"label": "Sleep", "ids": ["1", "3", "ghost"]}, {"label": "Fake", "ids": ["ghost"]}],
+                                    "noticed": [{"text": "Walks seem to help [2].", "ids": ["2", "nope"]}], "try": "Walk after lunch."})}
     client, seen = scripted([reply])
     out = insights(JOURNAL, "Tobi", client=client)
     assert out["themes"] == [{"label": "Sleep", "ids": ["a1", "c3"]}]
     assert out["noticed"][0]["ids"] == ["b2"] and out["try"]
     assert out["noticed"][0]["text"] == "Walks seem to help."
     assert "<entries>" in seen[0]["messages"][1]["content"]   # entries are passed as delimited data
+    assert "[1]" in seen[0]["messages"][1]["content"] and "a1" not in seen[0]["messages"][1]["content"]   # short numbers, not ids
+
+
+def test_insights_retry_once_when_the_json_is_broken():
+    from mindly.insights import insights
+    good = {"content": json.dumps({"headline": "H", "themes": [{"label": "T", "ids": ["1"]}], "noticed": [], "try": "x"})}
+    client, seen = scripted([{"content": '{"headline": "cut off", "themes": [{"label":'}, good])
+    out = insights(JOURNAL, client=client)
+    assert out["headline"] == "H" and out["themes"][0]["ids"] == ["a1"] and len(seen) == 2
 
 
 def test_insights_need_a_couple_of_entries():

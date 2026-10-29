@@ -46,6 +46,16 @@ export async function entries(): Promise<Entry[]> {
   const all = await req<Entry[]>(tx("entries").getAll());
   return all.sort((a, b) => b.created.localeCompare(a.created));
 }
+/** Write several entries in one transaction (used for the example journal). */
+export function putEntries(list: Entry[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const t = need().transaction("entries", "readwrite");
+    const s = t.objectStore("entries");
+    list.forEach((e) => s.put(e));
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+  });
+}
 export const entry = (id: string) => req<Entry | undefined>(tx("entries").get(id));
 
 export async function newEntry(prompt: string | null = null): Promise<Entry> {

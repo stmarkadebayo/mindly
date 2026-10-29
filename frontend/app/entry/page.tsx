@@ -178,7 +178,7 @@ function EntryScreen() {
           right={<button className="icon-btn" aria-label="Entry options" onClick={openMenu}><Icon name="more" /></button>} />
 
         <article className="page">
-          <p className="entry-date">{dayLabel(entry.created)} at {timeLabel(entry.created)}</p>
+          <p className="entry-date">{dayLabel(entry.created)} at {timeLabel(entry.created)}{entry.sample && " · Sample entry"}</p>
           {entry.prompt && (
             <p className="entry-prompt">{entry.prompt}
               {!hasText && <button aria-label="Remove prompt" onClick={async () => { const e = await store.updateEntry(id, (x) => { x.prompt = null; }); if (e) setEntry(e); }}><Icon name="close" size={14} /></button>}

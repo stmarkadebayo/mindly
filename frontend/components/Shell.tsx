@@ -7,6 +7,7 @@ import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { EntryList, matches } from "./EntryList";
 import { Mark } from "./Hand";
 import { Icon } from "./Icon";
+import { SampleOffer } from "./SampleOffer";
 import { useSession } from "./Session";
 import * as store from "@/lib/store";
 import { plain } from "@/lib/text";
@@ -58,7 +59,7 @@ function Sidebar() {
       {real.length > 0 && (
         <div className="search"><Icon name="search" /><input className="input" type="search" placeholder="Search your journal" aria-label="Search your journal" value={q} onChange={(e) => setQ(e.target.value)} /></div>
       )}
-      {real.length === 0 && <p className="empty-note">Your entries will gather here.</p>}
+      {real.length === 0 && <><p className="empty-note">Your entries will gather here.</p><SampleOffer /></>}
       {real.length > 0 && shown.length === 0 && <p className="empty-note">Nothing matches &ldquo;{q}&rdquo;.</p>}
       <EntryList entries={shown} activeId={active} />
     </aside>

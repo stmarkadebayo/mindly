@@ -23,6 +23,8 @@ export interface Entry {
   mood: number | null;
   segments: Segment[];
   images?: { id: string; name: string }[];
+  /** Part of the example journal, so it can be labelled and removed in one tap. */
+  sample?: boolean;
 }
 
 export interface ChatMessage {
