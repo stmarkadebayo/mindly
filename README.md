@@ -1,6 +1,6 @@
 # Mindly
 
-**Think out loud, feel lighter, get unstuck.** A private, voice-first journal. Tap the orb, talk the way you think, and get a clear written page in your own words. When you want, a gentle companion helps you reflect, grounded in what you've actually written.
+**Think out loud, feel lighter, get unstuck.** A private, voice-first AI journal. Tap the orb, talk the way you think, and get a clear written page in your own words. When you want, a gentle companion helps you reflect, grounded in what you've actually written.
 
 > Built for OPEN//BUILD 2026 (OSCA Ile-Ife Hacktoberfest) with open-weight models.
 

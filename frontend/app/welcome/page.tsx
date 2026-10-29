@@ -37,10 +37,10 @@ export default function Welcome() {
           <Sparkles className="sparkles" />
         </div>
         <div className="copy">
-          <p className="eyebrow">A voice-first journal</p>
+          <p className="eyebrow">A voice-first AI journal</p>
           <h1 className="large-title">Talk it out.<br />Mindly keeps the page.</h1>
           <p className="subhead lead" style={{ margin: 0 }}>
-            A private journal you speak to. Say what&apos;s on your mind and get back a clear page in your own words.
+            A private AI journal you speak to. Say what&apos;s on your mind and get back a clear page in your own words.
           </p>
           <div className="actions">
             <Link className="btn btn-primary btn-block" href="/auth/?mode=signup">Get started</Link>

@@ -1,7 +1,7 @@
 {
   "name": "Mindly",
   "short_name": "Mindly",
-  "description": "A voice-first journal. Speak naturally; Mindly writes the page.",
+  "description": "A voice-first AI journal. Speak naturally; Mindly writes the page.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f5f4fa",
