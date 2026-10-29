@@ -60,7 +60,7 @@ function Auth() {
         window.__mindlyGsi = true;
       }
       window.google.accounts.id.renderButton(googleSlot.current, {
-        theme: "outline", size: "large", shape: "pill", width: Math.min(380, window.innerWidth - 40), text: signup ? "signup_with" : "signin_with",
+        theme: "outline", size: "large", shape: "pill", width: Math.min(400, Math.max(200, Math.round(googleSlot.current!.clientWidth))), text: signup ? "signup_with" : "signin_with",
       });
     };
     if (window.google?.accounts) return render();
@@ -80,7 +80,7 @@ function Auth() {
           {signup ? "Your account keeps you signed in. Your journal itself stays on this device." : "Sign in to open your journal on this device."}
         </p>
         {config.google_client_id && <>
-          <div ref={googleSlot} style={{ minHeight: 44, display: "flex", justifyContent: "center", marginTop: 24 }} />
+          <div ref={googleSlot} style={{ minHeight: 44, display: "flex", justifyContent: "center", marginTop: 24, colorScheme: "light" }} />
           <div className="or">or use email</div>
         </>}
         <form onSubmit={submit} noValidate style={{ marginTop: config.google_client_id ? 0 : 24 }}>
