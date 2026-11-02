@@ -4,6 +4,7 @@ Hosted: an OpenAI-compatible /audio/transcriptions endpoint (Groq serves open Wh
 Local:  faster-whisper on the CPU; the model loads once, on first use.
 """
 
+import re
 import time
 from functools import lru_cache
 from pathlib import Path
@@ -19,7 +20,20 @@ MIME = {"webm": "audio/webm", "ogg": "audio/ogg", "mp4": "audio/mp4", "m4a": "au
 CONTEXT_PROMPT = "Nigerian English and Pidgin: abeg, wahala, dey, wetin, oga."
 # Segments Whisper is this unsure of are almost always invented from noise (real speech scores about -0.3).
 MIN_CONFIDENCE = -1.3
+
+
+def _echoes_prompt(text: str) -> bool:
+    """On quiet or near-silent audio Whisper can repeat the hint back as if it were speech; treat that as no speech."""
+    words = re.findall(r"[a-z']+", text.lower())
+    hint = set(re.findall(r"[a-z']+", CONTEXT_PROMPT.lower()))
+    # A real "abeg, oga" must survive, so only the descriptive lead-in ("Nigerian English and Pidgin") counts as an echo.
+    return bool({"nigerian", "pidgin"} & set(words)) and all(w in hint for w in words)
 NO_SPEECH_CUTOFF = 0.6  # hosted Whisper reports how likely each segment is silence; drop the likely ones
+# Room mode (a sermon, a lecture, a speaker across the hall): distant, echoey speech scores worse on both measures
+# even when the words are right, so the filters are loosened and shaky segments are kept and flagged, not dropped.
+ROOM_MIN_CONFIDENCE = -2.2
+ROOM_NO_SPEECH_CUTOFF = 0.9
+UNSURE_BELOW = -1.0  # a kept segment scoring under this is reported as uncertain
 
 # One client for the life of the process, so connections to the speech service are reused (no handshake per note).
 _client = httpx.Client(timeout=httpx.Timeout(60, connect=10))
@@ -37,12 +51,22 @@ RETRY_STATUS = {408, 425, 429, 500, 502, 503, 504}
 BACKOFF = (0.4, 1.2)  # seconds to wait before the second and third attempt
 
 
-def transcribe(path: Path, language: str | None = None) -> dict:
-    return _remote(path, language) if config.ASR_API_KEY else _local(path, language)
+def alt_configured() -> bool:
+    return bool(config.ASR_ALT_BASE_URL)
 
 
-def _remote_once(path: Path, language: str | None, model: str) -> dict:
-    data = {"model": model, "response_format": "verbose_json", "temperature": "0", "prompt": CONTEXT_PROMPT}
+def transcribe(path: Path, language: str | None = None, room: bool = False, alt: bool = False) -> dict:
+    """`alt` uses the second engine (config.ASR_ALT_*) so two speech models can be compared on the same speech."""
+    if alt:
+        return _storm(path, language) if config.ASR_ALT_STYLE == "storm" else _remote(path, language, room, alt=True)
+    return _remote(path, language, room) if config.ASR_API_KEY else _local(path, language)
+
+
+def _remote_once(path: Path, language: str | None, model: str, room: bool = False, alt: bool = False) -> dict:
+    base, key = (config.ASR_ALT_BASE_URL, config.ASR_ALT_API_KEY) if alt else (config.ASR_BASE_URL, config.ASR_API_KEY)
+    data = {"model": model, "response_format": "verbose_json", "temperature": "0"}
+    if not alt:
+        data["prompt"] = CONTEXT_PROMPT  # a Whisper-specific nudge; the alternative engine gets the audio alone
     if language:
         data["language"] = language
     audio = path.read_bytes()
@@ -50,8 +74,8 @@ def _remote_once(path: Path, language: str | None, model: str) -> dict:
     for attempt in range(len(BACKOFF) + 1):
         try:
             resp = _client.post(
-                f"{config.ASR_BASE_URL}/audio/transcriptions",
-                headers={"Authorization": f"Bearer {config.ASR_API_KEY}"},
+                f"{base}/audio/transcriptions",
+                headers={"Authorization": f"Bearer {key}"},
                 data=data,
                 files={"file": (path.name, audio, MIME.get(path.suffix.lstrip("."), "application/octet-stream"))},
             )
@@ -61,12 +85,22 @@ def _remote_once(path: Path, language: str | None, model: str) -> dict:
             if resp.status_code == 200:
                 body = resp.json()
                 segments = body.get("segments")
+                uncertain = False
                 if segments:
-                    text = " ".join(s["text"].strip() for s in segments
-                                    if s.get("no_speech_prob", 0) < NO_SPEECH_CUTOFF and s.get("avg_logprob", 0) > MIN_CONFIDENCE).strip()
+                    min_conf, cutoff = (ROOM_MIN_CONFIDENCE, ROOM_NO_SPEECH_CUTOFF) if room else (MIN_CONFIDENCE, NO_SPEECH_CUTOFF)
+                    kept = [s for s in segments if s.get("no_speech_prob", 0) < cutoff and s.get("avg_logprob", 0) > min_conf]
+                    uncertain = room and any(s.get("avg_logprob", 0) < UNSURE_BELOW for s in kept)
+                    text = " ".join(s["text"].strip() for s in kept).strip()
                 else:
                     text = (body.get("text") or "").strip()
-                return {"text": text, "language": body.get("language")}
+                if _echoes_prompt(text):
+                    text = ""
+                result = {"text": text, "language": body.get("language")}
+                if body.get("duration"):
+                    result["duration"] = body["duration"]
+                if uncertain:
+                    result["uncertain"] = True
+                return result
             err = ASRError(f"The speech service returned an error ({resp.status_code}).", retryable=resp.status_code in RETRY_STATUS)
         if not err.retryable:
             raise err
@@ -75,13 +109,33 @@ def _remote_once(path: Path, language: str | None, model: str) -> dict:
     raise err
 
 
-def _remote(path: Path, language: str | None) -> dict:
-    """Hosted Whisper. Transient failures are retried; if the main model keeps failing, the fallback model is tried."""
+STORM_LANGUAGES = {"en", "yo", "ha", "ig", "pcm"}
+
+
+def _storm(path: Path, language: str | None) -> dict:
+    """STORM-OS ASR: one multipart POST. It must be told the language, so use the person's choice or the configured default."""
+    lang = language if language in STORM_LANGUAGES else config.ASR_ALT_LANGUAGE
+    try:
+        resp = _client.post(f"{config.ASR_ALT_BASE_URL}/transcribe", headers={"x-api-key": config.ASR_ALT_API_KEY},
+                            data={"language": lang}, files={"file": (path.name, path.read_bytes(), MIME.get(path.suffix.lstrip("."), "application/octet-stream"))})
+    except httpx.HTTPError:
+        raise ASRError("Couldn't reach the speech service.", retryable=True)
+    if resp.status_code != 200:
+        raise ASRError(f"The speech service returned an error ({resp.status_code}).", retryable=resp.status_code in RETRY_STATUS)
+    body = resp.json()
+    text = str(body.get("text") or body.get("transcript") or body.get("transcription") or "").strip()
+    return {"text": text, "language": lang}
+
+
+def _remote(path: Path, language: str | None, room: bool = False, alt: bool = False) -> dict:
+    """Hosted speech. Transient failures are retried; if the main model keeps failing, the fallback model is tried."""
+    if alt:
+        return _remote_once(path, language, config.ASR_ALT_MODEL, room, alt=True)
     models = [config.ASR_MODEL] + ([config.ASR_FALLBACK_MODEL] if config.ASR_FALLBACK_MODEL and config.ASR_FALLBACK_MODEL != config.ASR_MODEL else [])
     err = ASRError("The speech service failed.")
     for model in models:
         try:
-            return _remote_once(path, language, model)
+            return _remote_once(path, language, model, room)
         except ASRError as exc:
             err = exc
     raise err
@@ -99,4 +153,6 @@ def _local(path: Path, language: str | None) -> dict:
     segments, info = _model().transcribe(str(path), language=language, vad_filter=True, beam_size=5,
                                        initial_prompt=CONTEXT_PROMPT, condition_on_previous_text=False)
     text = " ".join(s.text.strip() for s in segments).strip()
-    return {"text": text, "language": info.language}
+    if _echoes_prompt(text):
+        text = ""
+    return {"text": text, "language": info.language, "duration": info.duration}

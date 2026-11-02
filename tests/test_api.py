@@ -74,8 +74,8 @@ def test_transcribe_and_write(main, monkeypatch):
     import mindly.asr
     hints = []
     monkeypatch.setattr(mindly.asr, "transcribe",
-                        lambda path, lang: hints.append(lang) or {"text": "um I finally finished it", "language": "en"})
-    monkeypatch.setattr(main, "write_entry", lambda t, p, c: {"title": "Done", "body": "I finally finished it."})
+                        lambda path, lang, room=False: hints.append(lang) or {"text": "um I finally finished it", "language": "en"})
+    monkeypatch.setattr(main, "write_entry", lambda t, p, c, now=None, open_tasks=None: {"title": "Done", "body": "I finally finished it."})
     c = signed_in(main)
     r = c.post("/api/transcribe", files={"audio": ("a.webm", b"x", "audio/webm")}, data={"language": "ha"}).json()
     assert r["text"] and r["no_speech"] is False
@@ -86,7 +86,7 @@ def test_transcribe_and_write(main, monkeypatch):
 
 def test_silence_is_reported_as_no_speech(main, monkeypatch):
     import mindly.asr
-    monkeypatch.setattr(mindly.asr, "transcribe", lambda path, lang: {"text": "", "language": "en"})
+    monkeypatch.setattr(mindly.asr, "transcribe", lambda path, lang, room=False: {"text": "", "language": "en"})
     c = signed_in(main)
     assert c.post("/api/transcribe", files={"audio": ("a.webm", b"x", "audio/webm")}).json()["no_speech"] is True
 
@@ -98,7 +98,7 @@ def test_rejects_unsupported_audio(main):
 
 def test_daily_ai_limit(main, monkeypatch):
     monkeypatch.setattr(main.config, "DAILY_AI_LIMIT", 2)
-    monkeypatch.setattr(main, "write_entry", lambda t, p, c: {"title": "T", "body": "B"})
+    monkeypatch.setattr(main, "write_entry", lambda t, p, c, now=None, open_tasks=None: {"title": "T", "body": "B"})
     c = signed_in(main)
     codes = [c.post("/api/write", json={"transcript": "hello world"}).status_code for _ in range(3)]
     assert codes == [200, 200, 429]
@@ -166,3 +166,44 @@ def test_cache_headers_for_api_and_app(main, tmp_path, monkeypatch):
     out = main.config.ROOT / "frontend" / "out"
     if out.exists():
         assert c.get("/").headers.get("cache-control") == "no-cache"
+
+
+def test_alternative_engine_is_refused_until_it_is_connected_then_used(main, monkeypatch):
+    import mindly.asr
+    from mindly import config
+    monkeypatch.setattr(config, "ASR_ALT_BASE_URL", "")  # whatever the local .env says
+    monkeypatch.setattr(config, "ASR_ALT_LABEL", "NaijaVox")
+    c = signed_in(main)
+    send = lambda: c.post("/api/transcribe", files={"audio": ("a.webm", b"x", "audio/webm")}, data={"engine": "alt"})
+    assert c.get("/api/config").json()["asr_alt"] is None
+    assert send().status_code == 503
+    monkeypatch.setattr(config, "ASR_ALT_BASE_URL", "http://alt.test/v1")
+    monkeypatch.setattr(mindly.asr, "transcribe", lambda path, lang, **kw: {"text": f"alt={kw.get('alt')}", "language": "en"})
+    assert c.get("/api/config").json()["asr_alt"] == "NaijaVox"
+    assert send().json()["text"] == "alt=True"
+
+
+def test_usage_counts_are_recorded_and_removed_with_the_account(main):
+    c = signed_in(main)
+    assert c.post("/api/metric", json={"kind": "open"}).status_code == 200
+    assert c.post("/api/metric", json={"kind": "entry"}).status_code == 200
+    assert c.post("/api/metric", json={"kind": "bogus"}).status_code == 422
+    row = main.accounts.db.execute("SELECT opens, entries FROM usage").fetchone()
+    assert (row["opens"], row["entries"]) == (1, 1)
+    assert main.accounts.db.execute("SELECT COUNT(*) FROM first_entry").fetchone()[0] == 1
+    assert c.delete("/api/me").status_code == 200
+    assert main.accounts.db.execute("SELECT COUNT(*) FROM usage").fetchone()[0] == 0
+
+
+def test_reminder_needs_keys_and_a_real_push_service(main, monkeypatch):
+    from mindly import config
+    c = signed_in(main)
+    good = {"endpoint": "https://fcm.googleapis.com/fcm/send/abc", "keys": {"p256dh": "x", "auth": "y"}}
+    body = {"subscription": good, "minutes": 1260, "tz_offset": 60}
+    monkeypatch.setattr(config, "VAPID_PUBLIC_KEY", "")
+    assert c.put("/api/reminder", json=body).status_code == 503
+    monkeypatch.setattr(config, "VAPID_PUBLIC_KEY", "pub")
+    assert c.put("/api/reminder", json=body).status_code == 200
+    evil = {**body, "subscription": {"endpoint": "https://169.254.169.254/x", "keys": {"p256dh": "x", "auth": "y"}}}
+    assert c.put("/api/reminder", json=evil).status_code == 400  # the server must not be pointed at arbitrary addresses
+    assert c.delete("/api/reminder").status_code == 200

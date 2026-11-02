@@ -5,6 +5,7 @@ conversations live on the person's device and are sent here only for the request
 """
 
 import json
+from contextlib import asynccontextmanager
 import tempfile
 import time
 from urllib.parse import urlparse
@@ -18,7 +19,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import config, llm
+from . import billing, config, llm, reminders
 from .accounts import Accounts, AuthError
 from .asr import ASRError
 from .reflect import companion, companion_events
@@ -31,8 +32,17 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 AUDIO_TYPES = {"webm", "ogg", "mp4", "m4a", "wav", "mp3", "aiff"}
 WHISPER_HINTS = {"en", "yo"}
 
-app = FastAPI(title="Mindly", docs_url=None, redoc_url=None, openapi_url=None)  # no public API docs
 accounts = Accounts(config.DATA_DIR / "accounts.db")
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    if config.VAPID_PRIVATE_KEY:
+        reminders.start(accounts)
+    yield
+
+
+app = FastAPI(title="Mindly", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)  # no public API docs
 
 
 # --- security -----------------------------------------------------------------
@@ -126,7 +136,9 @@ class GoogleCredential(BaseModel):
 
 @app.get("/api/config")
 def public_config():
-    return {"google_client_id": config.GOOGLE_CLIENT_ID or None}
+    return {"google_client_id": config.GOOGLE_CLIENT_ID or None, "vapid_public_key": config.VAPID_PUBLIC_KEY or None,
+            "asr_alt": config.ASR_ALT_LABEL if config.ASR_ALT_BASE_URL else None,
+            "billing": billing.enabled(), "pro_price": config.PRO_PRICE_LABEL, "free_minutes": config.FREE_DAILY_SECONDS // 60}
 
 
 @app.post("/api/auth/signup")
@@ -202,15 +214,29 @@ def delete_me(request: Request, response: Response, user: dict = Depends(current
 
 # --- AI steps (stateless) ------------------------------------------------------
 
+def pro_only(user: dict, what: str):
+    if user["plan"] != "pro":
+        raise HTTPException(402, f"{what} is part of Mindly Pro.")
+
+
 def ai_quota(user: dict):
     limit(f"ai:{user['id']}", config.DAILY_AI_LIMIT, 86400,
           "You've reached today's AI limit for this prototype. Your journal still works; try again tomorrow.")
 
 
 @app.post("/api/transcribe")
-async def transcribe_audio(audio: UploadFile = File(...), language: str = Form(""),
+async def transcribe_audio(audio: UploadFile = File(...), language: str = Form(""), room: str = Form(""), engine: str = Form(""),
                            user: dict = Depends(current_user)):
     ai_quota(user)
+    alt = engine == "alt"
+    if user["plan"] != "pro":
+        if alt or room == "1":
+            pro_only(user, "Room mode and the second speech engine")
+        if accounts.seconds_today(user["id"]) >= config.FREE_DAILY_SECONDS:
+            raise HTTPException(402, f"You've used today's {config.FREE_DAILY_SECONDS // 60} free minutes of speech. "
+                                     "You can still type, or come back tomorrow, or go Pro for unlimited.")
+    if alt and not config.ASR_ALT_BASE_URL:
+        raise HTTPException(503, f"{config.ASR_ALT_LABEL} isn't connected on this server yet.")
     ext = (audio.filename or "audio.webm").rsplit(".", 1)[-1].lower()
     if ext not in AUDIO_TYPES:
         raise HTTPException(415, "Unsupported audio format.")
@@ -227,26 +253,105 @@ async def transcribe_audio(audio: UploadFile = File(...), language: str = Form("
         path.write_bytes(data)
         try:
             # Whisper has no Pidgin; for anything it doesn't know, let it auto-detect.
-            result = transcribe(path, language if language in WHISPER_HINTS else None)
+            lang = language if alt or language in WHISPER_HINTS else None
+            extra = {**({"room": True} if room == "1" else {}), **({"alt": True} if alt else {})}
+            result = transcribe(path, lang, **extra)
         except ASRError as exc:
             raise HTTPException(502, str(exc))
         except Exception:
             raise HTTPException(400, "This recording couldn't be decoded. Try recording again.")
+    # Count what the speech service measured; if it didn't say, estimate from size (the app records at about 4 KB a second).
+    accounts.add_seconds(user["id"], int(result.pop("duration", None) or len(data) / 4000))
     words = len(result["text"].split())
     return {**result, "no_speech": words < 2}
+
+
+def site_base(request: Request) -> str:
+    return str(request.base_url).rstrip("/")
+
+
+@app.post("/api/billing/checkout")
+def billing_checkout(request: Request, user: dict = Depends(current_user)):
+    if not billing.enabled():
+        raise HTTPException(503, "Payments aren't switched on yet.")
+    try:
+        return {"url": billing.checkout_url(user, site_base(request))}
+    except RuntimeError:
+        raise HTTPException(502, "Couldn't reach the payment service. Try again in a moment.")
+
+
+@app.post("/api/billing/portal")
+def billing_portal(request: Request, user: dict = Depends(current_user)):
+    subscription = accounts.subscription(user["id"])
+    if not billing.enabled() or not subscription:
+        raise HTTPException(404, "There's no subscription to manage.")
+    try:
+        return {"url": billing.manage_url(subscription)}
+    except RuntimeError:
+        raise HTTPException(502, "Couldn't reach the payment service. Try again in a moment.")
+
+
+@app.post("/api/billing/webhook")
+async def billing_webhook(request: Request):
+    body = await request.body()
+    if not config.PAYSTACK_SECRET_KEY or not billing.verify(body, request.headers.get("x-paystack-signature", ""), config.PAYSTACK_SECRET_KEY):
+        raise HTTPException(400, "Bad signature.")
+    billing.apply(json.loads(body), accounts)
+    return {"ok": True}
+
+
+class ReminderRequest(BaseModel):
+    subscription: dict
+    minutes: int = Field(ge=0, lt=1440)       # the person's local time of day, in minutes after midnight
+    tz_offset: int = Field(ge=-840, le=840)   # minutes east of UTC
+
+
+@app.put("/api/reminder")
+def set_reminder(body: ReminderRequest, user: dict = Depends(current_user)):
+    if not config.VAPID_PUBLIC_KEY:
+        raise HTTPException(503, "Reminders aren't switched on for this server yet.")
+    if not reminders.valid_subscription(body.subscription):
+        raise HTTPException(400, "That notification setup isn't supported.")
+    accounts.set_reminder(user["id"], body.subscription, body.minutes, body.tz_offset)
+    return {"ok": True}
+
+
+@app.delete("/api/reminder")
+def clear_reminder(user: dict = Depends(current_user)):
+    accounts.clear_reminder(user["id"])
+    return {"ok": True}
+
+
+class Metric(BaseModel):
+    kind: Literal["open", "entry"]
+
+
+@app.post("/api/metric")
+def metric(body: Metric, user: dict = Depends(current_user)):
+    """A count, never content: lets us see whether people come back."""
+    limit(f"metric:{user['id']}", 300, 86400, "Too many.")
+    accounts.record(user["id"], body.kind)
+    return {"ok": True}
+
+
+class OpenTask(BaseModel):
+    id: str = Field(max_length=100)
+    text: str = Field(max_length=200)
 
 
 class WriteRequest(BaseModel):
     transcript: str = Field(min_length=1, max_length=30_000)
     prompt: str | None = Field(default=None, max_length=300)
     continuing: bool = False
+    now: str | None = Field(default=None, max_length=40)  # the device's local date and time, to resolve "Friday at 5"
+    open_tasks: list[OpenTask] = Field(default_factory=list, max_length=20)  # unticked checklist lines, so finished ones can be spotted
 
 
 @app.post("/api/write")
 def write(body: WriteRequest, user: dict = Depends(current_user)):
     ai_quota(user)
     try:
-        written = write_entry(body.transcript, body.prompt, body.continuing)
+        written = write_entry(body.transcript, body.prompt, body.continuing, now=body.now, open_tasks=[t.model_dump() for t in body.open_tasks])
     except (llm.LLMError, WritingError) as exc:
         raise HTTPException(502, str(exc))
     return {**written, "support": needs_support(body.transcript)}

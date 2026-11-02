@@ -259,7 +259,7 @@ def test_citation_without_hash_is_still_grounded():
 def test_filler_only_transcript_is_not_an_error():
     client, seen = scripted([{"role": "assistant", "content": '{"title": "", "body": ""}'}])
     out = write_entry("um uh you know", client=client)
-    assert out == {"title": "", "body": "", "empty": True} and len(seen) == 1   # nothing worth a retry
+    assert out == {"title": "", "body": "", "actions": [], "done": [], "empty": True} and len(seen) == 1   # nothing worth a retry
 
 
 def test_blank_page_for_a_real_transcript_is_retried_once():
@@ -320,3 +320,32 @@ def test_chat_stream_retries_before_any_words_were_sent():
     client = httpx.Client(transport=httpx.MockTransport(handler))
     events = list(llm.chat_stream("main", [{"role": "user", "content": "hi"}], client=client))
     assert [v for k, v in events if k == "delta"] == ["Hello ", "there."] and len(calls) == 2
+
+
+def test_writer_keeps_only_well_formed_actions():
+    from mindly import writer
+    got = writer.clean_actions([
+        {"kind": "reminder", "text": "Call the landlord", "when": "2026-11-06T17:00"},
+        {"kind": "reminder", "text": "Submit the form", "when": "next sometime"},  # unusable time: becomes a plain task
+        {"kind": "task", "text": ""}, {"kind": "mood", "text": "x"}, "junk",
+    ])
+    assert got == [{"kind": "reminder", "text": "Call the landlord", "when": "2026-11-06T17:00"},
+                   {"kind": "task", "text": "Submit the form", "when": None}]
+
+
+def test_reflect_prompt_is_conversational_by_default():
+    from mindly import reflect
+    assert "Do not offer suggestions" in reflect.BASE_PROMPT
+
+
+def test_writer_reports_only_finished_tasks_it_was_given():
+    from mindly import writer
+    raw = '{"title": "T", "body": "B", "done": ["e1#2", "made-up", 7]}'
+    assert writer.parse(raw, {"e1#2", "e1#3"})["done"] == ["e1#2"]
+    assert writer.parse(raw)["done"] == []  # no open tasks were offered, so nothing can be marked
+
+
+def test_open_tasks_are_listed_in_the_prompt():
+    client, seen = scripted([{"role": "assistant", "content": '{"title": "T", "body": "B", "done": ["a#0"]}'}])
+    out = write_entry("I called the landlord", client=client, open_tasks=[{"id": "a#0", "text": "Call the landlord"}])
+    assert out["done"] == ["a#0"] and "a#0: Call the landlord" in str(seen[0])

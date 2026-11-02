@@ -42,7 +42,7 @@ Before building, we asked students six questions (how they capture thoughts, wha
 | **A real page, automatically** | Your words are transcribed and rewritten into a clean first-person entry with a title. Fillers go and obvious speech-recognition slips are fixed; your facts, feelings and phrasing stay. No summarising, no advice, no translation. |
 | **Edit and keep going** | The page is editable and autosaves. Tap the orb again to keep talking, and the new part is added to the end. If you type while Mindly is still writing, your typing wins. Note tools add headings, bold, checklists, bullets, numbered lists, starred lines, dividers, timestamps and photos (kept on the device). |
 | **Three prompts when you're stuck** | Chosen from the goals you pick in onboarding. Tap one and start talking. |
-| **Mood, minimally** | One tap after recording (Low, Meh, Okay, Good, Great). Insights shows two weeks as a thin line. No streaks, on purpose. |
+| **Mood, minimally** | One tap after recording (Low, Meh, Okay, Good, Great). Insights shows two weeks as a thin line. |
 | **Reflect** | Tap the Reflect button on any entry for a short insight that connects it to related past entries, each linked as a source. |
 | **Chat** | A companion (type or speak) that helps you get things out, make sense of them, and pick one small next step. Replies stream in as they're written, in the language you write in. It isn't a therapist or a general assistant. |
 | **Insights: "From your words"** | After three entries, the model reads your recent entries and shows the themes that keep coming up, a few things it noticed (each linking to the entries behind it), and one small thing to try. It is cached on your device until your entries change. |
