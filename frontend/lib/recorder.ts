@@ -21,12 +21,23 @@ export class Recorder {
   private startedAt = 0;
   private tick: ReturnType<typeof setInterval> | undefined;
 
-  constructor(private hooks: { onTick?: (s: number) => void; onAutoStop?: (reason: StopReason) => void } = {}) {}
+  private ctx: AudioContext | null = null;
+  private level: AnalyserNode | null = null;
+  private loud = 0; // loudest moment so far, 0 to 1
+  private warned = false;
+
+  constructor(
+    private hooks: { onTick?: (s: number) => void; onAutoStop?: (reason: StopReason) => void; onQuiet?: () => void } = {},
+    /** Room mode: record the sound as it arrives. Echo cancellation, noise suppression and auto-gain are built for a phone
+     *  held at the mouth and tend to remove a distant speaker as "noise". */
+    private room = false,
+  ) {}
 
   async start(): Promise<MediaStream> {
     try {
+      const on = !this.room;
       this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        audio: { echoCancellation: on, noiseSuppression: on, autoGainControl: on, channelCount: 1 },
       });
     } catch (err) {
       const name = (err as DOMException)?.name;
@@ -35,7 +46,9 @@ export class Recorder {
     }
     this.chunks = [];
     // A modest bitrate is plenty for speech and keeps the upload (the slowest part on mobile data) small.
-    this.recorder = new MediaRecorder(this.stream, { audioBitsPerSecond: 32000 });
+    // Room speech is faint and echoey, so it gets more bits than a voice held close to the microphone.
+    this.recorder = new MediaRecorder(this.stream, { audioBitsPerSecond: this.room ? 64000 : 32000 });
+    this.watchLevel(this.stream);
     this.recorder.ondataavailable = (e) => e.data.size && this.chunks.push(e.data);
     this.recorder.start(1000); // collect every second so an interruption loses at most a moment
     this.elapsedBefore = 0;
@@ -43,11 +56,37 @@ export class Recorder {
     this.tick = setInterval(() => {
       const s = this.seconds();
       this.hooks.onTick?.(s);
+      this.checkLevel(s);
       if (s >= MAX_SECONDS) this.hooks.onAutoStop?.("limit");
     }, 250);
     // A phone call, unplugged headset or revoked permission ends the track: keep what we have.
     this.stream.getAudioTracks().forEach((t) => (t.onended = () => this.hooks.onAutoStop?.("interrupted")));
     return this.stream;
+  }
+
+  private watchLevel(stream: MediaStream) {
+    this.loud = 0;
+    this.warned = false;
+    try {
+      this.ctx = new AudioContext();
+      this.level = this.ctx.createAnalyser();
+      this.level.fftSize = 1024;
+      this.ctx.createMediaStreamSource(stream).connect(this.level);
+    } catch { this.level = null; } // no level check; recording is unaffected
+  }
+
+  /** After a few seconds of recording, warn once if the microphone has heard almost nothing. */
+  private checkLevel(seconds: number) {
+    if (!this.level || this.state !== "recording") return;
+    const data = new Uint8Array(this.level.fftSize);
+    this.level.getByteTimeDomainData(data);
+    let peak = 0;
+    for (const v of data) peak = Math.max(peak, Math.abs(v - 128) / 128);
+    this.loud = Math.max(this.loud, peak);
+    if (seconds >= 6 && !this.warned && this.loud < 0.04) {
+      this.warned = true;
+      this.hooks.onQuiet?.();
+    }
   }
 
   get state(): RecordingState {
@@ -91,6 +130,9 @@ export class Recorder {
 
   private cleanup() {
     clearInterval(this.tick);
+    this.ctx?.close().catch(() => {});
+    this.ctx = null;
+    this.level = null;
     this.stream?.getTracks().forEach((t) => {
       t.onended = null;
       t.stop();

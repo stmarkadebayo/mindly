@@ -13,6 +13,7 @@ import { api, ApiError } from "@/lib/api";
 import { shortDate } from "@/lib/content";
 import { pickContext } from "@/lib/context";
 import { streamCompanion } from "@/lib/stream";
+import { roomMode, speechEngine } from "@/lib/prefs";
 import { MicDeniedError, Recorder } from "@/lib/recorder";
 import * as store from "@/lib/store";
 import type { Chat, ChatMessage, Entry } from "@/lib/types";
@@ -102,6 +103,8 @@ function Talk() {
         const form = new FormData();
         form.append("audio", r.blob, `message.${r.ext}`);
         form.append("language", me.profile.speechLanguage || "");
+        if (roomMode()) form.append("room", "1");
+        if (speechEngine() === "alt") form.append("engine", "alt");
         const heard = await api<{ text: string; no_speech: boolean }>("/api/transcribe", { method: "POST", form });
         if (heard.no_speech) toast("No words came through. Try again?");
         else setText((t) => (t ? t + " " : "") + heard.text);

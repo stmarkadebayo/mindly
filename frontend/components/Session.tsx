@@ -13,7 +13,7 @@ import { Keypad } from "./Keypad";
 
 interface SessionContext {
   me: User | null;
-  config: { google_client_id?: string | null };
+  config: { google_client_id?: string | null; asr_alt?: string | null; vapid_public_key?: string | null; billing?: boolean; pro_price?: string; free_minutes?: number };
   setMe: (u: User) => void;
   signedIn: (u: User) => Promise<void>;
   signOut: () => Promise<void>;
@@ -43,6 +43,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setMeState(u);
     setLocked(hasPin(u.id));
     pipeline.resumeAll();
+    api("/api/metric", { method: "POST", json: { kind: "open" }, quiet: true }).catch(() => {}); // a count, so we can see whether people come back
   }, []);
 
   const signedOut = useCallback(() => {

@@ -1,6 +1,6 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Orb } from "@/components/Orb";
 import { useMe, useSession } from "@/components/Session";
@@ -8,9 +8,11 @@ import { useUI } from "@/components/UI";
 import { api } from "@/lib/api";
 import { GOALS } from "@/lib/content";
 import * as pipeline from "@/lib/pipeline";
+import { MicDeniedError, Recorder } from "@/lib/recorder";
+import * as store from "@/lib/store";
 import type { User } from "@/lib/types";
 
-const STEPS = ["name", "goals", "privacy", "mic"] as const;
+const STEPS = ["name", "goals", "privacy", "voice"] as const;
 
 export default function Onboarding() {
   const me = useMe();
@@ -23,13 +25,47 @@ export default function Onboarding() {
   const [consent, setConsent] = useState(false);
   const s = STEPS[step];
 
+  // The last step: say a few words so Mindly can tune in. It is a real first entry, so the first page is waiting afterwards.
+  const [phase, setPhase] = useState<"idle" | "listening" | "working" | "heard">("idle");
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [heard, setHeard] = useState("");
+  const rec = useRef<Recorder | null>(null);
+  const first = useRef<string | null>(null);
+
+  useEffect(() => {
+    const onEntry = async (ev: Event) => {
+      const d = (ev as CustomEvent<pipeline.EntryEvent>).detail;
+      if (d.entryId !== first.current) return;
+      const seg = (await store.entry(d.entryId))?.segments[0];
+      if (seg?.transcript) { setHeard(seg.transcript); setPhase("heard"); }
+      else if (seg && ["no_speech", "failed"].includes(seg.status)) { toast("I couldn't make that out. Try once more?"); setPhase("idle"); }
+    };
+    window.addEventListener("mindly:entry", onEntry);
+    return () => window.removeEventListener("mindly:entry", onEntry);
+  }, [toast]);
+
+  const talk = async () => {
+    if (phase === "listening") {
+      const r = await rec.current?.stop(true);
+      rec.current = null;
+      setStream(null);
+      if (!r || r.seconds < 2) { toast("That was very short. Say a sentence or two."); return setPhase("idle"); }
+      setPhase("working");
+      const e = await store.newEntry();
+      first.current = e.id;
+      await pipeline.addRecording(e.id, r);
+      return;
+    }
+    if (phase !== "idle") return;
+    const r = new Recorder({ onAutoStop: () => talk() });
+    try { setStream(await r.start()); rec.current = r; setPhase("listening"); }
+    catch (err) { toast(err instanceof MicDeniedError ? "No problem. You can allow the microphone later." : (err as Error).message); }
+  };
+
   const toggle = (list: string[], set: (v: string[]) => void, k: string) => set(list.includes(k) ? list.filter((x) => x !== k) : [...list, k]);
 
   const next = async (primary: boolean) => {
-    if (s === "mic" && primary) {
-      try { (await navigator.mediaDevices.getUserMedia({ audio: true })).getTracks().forEach((t) => t.stop()); }
-      catch { toast("No problem. Mindly will ask again the first time you record."); }
-    }
+    if (rec.current) { await rec.current.stop(false); rec.current = null; setStream(null); }
     if (step < STEPS.length - 1) return setStep(step + 1);
     const speechLanguage = ""; // auto-detect: people mix English, Pidgin and Yoruba, so we don't make them choose
     try {
@@ -37,7 +73,7 @@ export default function Onboarding() {
         name, profile: { ...me.profile, goals, speechLanguage, onboarded: true, consentedAt: new Date().toISOString() } } });
       pipeline.setLanguage(speechLanguage);
       setMe(user);
-      router.replace("/");
+      router.replace(first.current ? `/entry/?id=${first.current}` : "/");
     } catch (e) { toast((e as Error).message); }
   };
 
@@ -73,15 +109,24 @@ export default function Onboarding() {
             <span>I understand how Mindly handles my data, it isn&apos;t a substitute for professional help, and I agree to the <a href="/terms/" target="_blank">terms</a>, including the model licences and recording only myself.</span></label>
         </>}
 
-        {s === "mic" && <>
-          <div style={{ width: 200, height: 200, margin: "8vh auto 0" }}><Orb idle={1.5} /></div>
-          <h1 className="title q" style={{ textAlign: "center", marginTop: 16 }}>One last thing</h1>
-          <p className="subhead" style={{ textAlign: "center" }}>Mindly needs your microphone to hear you. It only listens while the orb is open.</p>
+        {s === "voice" && <>
+          <button className="orb-btn" style={{ width: 200, height: 200, margin: "6vh auto 0", display: "block" }} onClick={talk}
+            aria-label={phase === "listening" ? "Stop" : "Start talking"}><Orb stream={stream} thinking={phase === "working"} idle={1.5} /></button>
+          <h1 className="title q" style={{ textAlign: "center", marginTop: 16 }}>
+            {phase === "listening" ? "I'm listening" : phase === "working" ? "Getting used to your voice…" : phase === "heard" ? "Nice to meet you" : "Say a few words"}
+          </h1>
+          <p className="subhead" style={{ textAlign: "center" }}>
+            {phase === "idle" && "Tap the orb and tell me how your day is going, so I can get used to how you speak. This becomes your first page."}
+            {phase === "listening" && "Tap the orb again when you're done."}
+            {phase === "working" && "Listening back…"}
+            {phase === "heard" && <>Here&apos;s what I heard: <i>{heard}</i></>}
+          </p>
+          {phase !== "heard" && <button className="btn btn-plain" style={{ display: "block", margin: "8px auto 0" }} onClick={() => next(false)}>Skip for now</button>}
         </>}
 
         <div className="foot">
           {step > 0 ? <button className="icon-btn" aria-label="Back" onClick={() => setStep(step - 1)}><Icon name="back" /></button> : <span />}
-          <button className="next" aria-label={s === "mic" ? "Allow microphone and finish" : "Continue"} disabled={s === "privacy" && !consent} onClick={() => next(true)}>
+          <button className="next" aria-label={s === "voice" ? "Finish" : "Continue"} disabled={(s === "privacy" && !consent) || (s === "voice" && phase !== "heard")} onClick={() => next(true)}>
             <Icon name="chev" />
           </button>
         </div>

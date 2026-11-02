@@ -113,7 +113,6 @@ export default function Insights() {
         <div className="axis">{points.map((p) => <span key={p.d.toISOString()}>{p.d.toLocaleDateString(undefined, { weekday: "narrow" })}</span>)}</div>
       </section>
 
-      <p className="hand" style={{ fontSize: 18, color: "var(--muted)", marginTop: 24 }}>No streaks here, on purpose. Come back whenever it helps.</p>
     </main>
   );
 }

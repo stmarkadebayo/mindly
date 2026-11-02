@@ -4,11 +4,15 @@ import { useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { EntryList, matches } from "@/components/EntryList";
 import { SampleOffer } from "@/components/SampleOffer";
+import { EngineToggle } from "@/components/EngineToggle";
+import { DueReminders } from "@/components/Suggestions";
+import { StreakPill } from "@/components/Habit";
+import { TrialCard } from "@/components/TrialCard";
 import { Mark, Underline } from "@/components/Hand";
 import { Icon } from "@/components/Icon";
 import { useMe } from "@/components/Session";
 import { VoiceDock, type VoiceHandle } from "@/components/VoiceDock";
-import { defaultPrompts, salutation } from "@/lib/content";
+import { salutation, timePrompts } from "@/lib/content";
 import * as pipeline from "@/lib/pipeline";
 import type { Recording } from "@/lib/recorder";
 import * as store from "@/lib/store";
@@ -29,7 +33,7 @@ export default function Home() {
   const [zoneTop, setZoneTop] = useState<number | null>(null);
   const [q, setQ] = useState("");
   const [live, setLive] = useState(false);
-  const prompts = useMemo(() => defaultPrompts(me.profile), [me.profile]);
+  const prompts = useMemo(() => timePrompts(me.profile), [me.profile]);
   const first = me.name?.split(" ")[0];
 
   useEffect(() => {
@@ -70,12 +74,14 @@ export default function Home() {
     <main ref={mainRef} className={`screen home${live ? " live" : ""}`} style={ready ? undefined : { visibility: "hidden" }}>
       <div className="recede stage-top">
         <header className="home-head">
-          <Mark size={28} />
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}><Mark size={28} /><StreakPill /></div>
+          <EngineToggle />
           <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-            <Link className="icon-btn" href="/insights/" aria-label="Insights"><Icon name="chart" /></Link>
             <Link className="avatar" href="/settings/" aria-label="Settings">{(me.name || me.email)[0].toUpperCase()}</Link>
           </div>
         </header>
+
+        <TrialCard />
 
         <div className="stage-body">
           <div className="stage-above hello">
@@ -105,7 +111,7 @@ export default function Home() {
         <EntryList entries={shown} />
       </div>
 
-      <Link className="chat-pill glass chrome" href="/talk/" aria-label="Chat with Mindly"><Mark size={22} />Chat</Link>
+      {!live && <DueReminders />}
 
       <VoiceDock ref={voice} anchor={slot} onRecording={onRecording} onLive={setLive} hint="" />
     </main>

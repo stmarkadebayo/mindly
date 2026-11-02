@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Patrick_Hand } from "next/font/google";
+import { Caveat, Newsreader, Patrick_Hand } from "next/font/google";
 import { HandDefs } from "@/components/Hand";
 import { SessionProvider } from "@/components/Session";
 import { Shell } from "@/components/Shell";
@@ -9,6 +9,10 @@ import "./screens.css";
 
 // An upright, friendly handwriting face (no slant), used for the journal and display moments.
 const hand = Patrick_Hand({ weight: "400", subsets: ["latin"], variable: "--font-hand", display: "swap" });
+
+// Used only by the Paper style; not preloaded, so Classic never downloads them.
+const serif = Newsreader({ subsets: ["latin"], variable: "--font-serif", display: "swap", preload: false });
+const script = Caveat({ subsets: ["latin"], variable: "--font-script", display: "swap", preload: false });
 
 const SITE = "https://mindly-ai.duckdns.org";
 const DESCRIPTION = "A private, voice-first AI journal. Talk it out; Mindly keeps the page.";
@@ -36,11 +40,11 @@ export const viewport: Viewport = {
 };
 
 // Apply the saved theme before first paint so there's no flash.
-const themeScript = `try{var t=localStorage.getItem("mindly.theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}`;
+const themeScript = `try{var t=localStorage.getItem("mindly.theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;if(localStorage.getItem("mindly.skin")==="paper")document.documentElement.dataset.skin="paper"}catch(e){}`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={hand.variable} suppressHydrationWarning>
+    <html lang="en" className={`${hand.variable} ${serif.variable} ${script.variable}`} suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head>
       <body>
         <HandDefs />

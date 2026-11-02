@@ -6,6 +6,7 @@ import { Mark, Ring } from "@/components/Hand";
 import { Icon } from "@/components/Icon";
 import { BodyEditor, type BodyHandle } from "@/components/BodyEditor";
 import { NoteTools } from "@/components/NoteTools";
+import { EntrySuggestions, taskLine } from "@/components/Suggestions";
 import { Orb } from "@/components/Orb";
 import { useUI } from "@/components/UI";
 import { VoiceDock } from "@/components/VoiceDock";
@@ -110,6 +111,7 @@ function EntryScreen() {
       const d = (ev as CustomEvent<pipeline.EntryEvent>).detail;
       if (d.entryId !== id) return;
       if (d.support) setSupport(true);
+      if (d.uncertain) toast("Some of that was hard to hear. Give it a quick read-through.");
       store.entry(id).then((e) => e && setEntry(e));
     };
     window.addEventListener("mindly:entry", onEntry);
@@ -168,6 +170,13 @@ function EntryScreen() {
     const e = await store.updateEntry(id, (x) => { const s = x.segments.find((y) => y.id === segId); if (s) s.dismissed = true; });
     if (e) setEntry(e);
   };
+  const undo = async (cid: string) => {
+    const c = entry.completions?.find((x) => x.id === cid);
+    if (!c) return;
+    await store.updateEntry(c.entryId, (x) => { x.body = x.body.split("\n").map((l) => (l === `☑ ${c.text}` ? `☐ ${c.text}` : l)).join("\n"); });
+    const e = await store.updateEntry(id, (x) => { x.completions = (x.completions ?? []).filter((y) => y.id !== cid); });
+    if (e) setEntry(e);
+  };
   const onRecording = async (rec: Recording) => { await pipeline.addRecording(id, rec); };
   const openMenu = () => menu(entry, sheet, confirm, setMood, async () => { await store.deleteEntry(id); toast("Entry deleted"); router.replace("/"); });
 
@@ -190,6 +199,14 @@ function EntryScreen() {
 
           {visible.map((s) => <SegmentStatus key={s.id} seg={s} onRetry={() => pipeline.process(id, s.id)} onDismiss={() => dismiss(s.id)} />)}
           {support && <SupportCard />}
+          <EntrySuggestions entry={entry} onChange={setEntry}
+            onAccept={(s) => { const b = latest.current.body; edit({ body: b.trim() ? `${b.trimEnd()}\n\n${taskLine(s)}` : taskLine(s) }); save(); }} />
+          {(entry.completions ?? []).filter((c) => Date.now() - new Date(c.at).getTime() < 864e5).map((c) => (
+            <div key={c.id} className="suggest-undo">
+              <span>✓ Ticked off <b>{c.text}</b></span>
+              <button className="btn btn-plain" onClick={() => undo(c.id)}>Undo</button>
+            </div>
+          ))}
 
           {showMood && (
             <div className="mood-card">

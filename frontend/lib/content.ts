@@ -22,6 +22,28 @@ export function defaultPrompts(profile?: Profile): string[] {
   return [...new Set([...picked, "How did today actually go?", "What's taking up space in your head?", "What's one good thing from today?"])].slice(0, 3);
 }
 
+// Home prompts follow the time of day, rotate daily, and Sunday has its own. Goals from onboarding still come first.
+const BY_TIME: Record<"morning" | "day" | "evening" | "night", string[]> = {
+  morning: ["How did you sleep, and how's your head?", "What's one thing you must not forget today?", "What do you want today to look like?", "What are you looking forward to today?"],
+  day: ["How's the day going so far?", "What's taking up space in your head?", "What's something you noticed today?", "What do you need right now?"],
+  evening: ["How did today actually go?", "What's one good thing from today?", "What are you still carrying from today?", "What would you tell a friend about today?"],
+  night: ["What's keeping you up?", "What would help you let go of today?", "What are you grateful for tonight?", "What do you want tomorrow to look like?"],
+};
+const SUNDAY = ["How was your week, in a few words?", "What do you want next week to hold?", "What did you learn about yourself this week?"];
+
+export function timeSlot(d = new Date()): "morning" | "day" | "evening" | "night" {
+  const h = d.getHours();
+  return h >= 5 && h <= 10 ? "morning" : h >= 11 && h <= 16 ? "day" : h >= 17 && h <= 21 ? "evening" : "night";
+}
+
+export function timePrompts(profile?: Profile, d = new Date()): string[] {
+  const doy = Math.floor((d.getTime() - new Date(d.getFullYear(), 0, 0).getTime()) / 864e5);
+  const pool = d.getDay() === 0 ? [...SUNDAY, ...BY_TIME[timeSlot(d)]] : BY_TIME[timeSlot(d)];
+  const turned = pool.map((_, i) => pool[(i + doy) % pool.length]);
+  const goal = (profile?.goals ?? []).flatMap((g) => PROMPTS[g] ?? [])[doy % 2];
+  return [...new Set([...turned.slice(0, goal ? 2 : 3), ...(goal ? [goal] : []), ...turned.slice(2)])].slice(0, 3);
+}
+
 export const MOODS = [
   { v: 1, label: "Low", color: "#9A97C9" },
   { v: 2, label: "Meh", color: "#AEB9D6" },

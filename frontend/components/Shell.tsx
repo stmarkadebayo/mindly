@@ -6,6 +6,9 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { EntryList, matches } from "./EntryList";
 import { Mark } from "./Hand";
+import { EngineToggle } from "./EngineToggle";
+import { StreakPill } from "./Habit";
+import { NavPill } from "./NavPill";
 import { Icon } from "./Icon";
 import { SampleOffer } from "./SampleOffer";
 import { useSession } from "./Session";
@@ -13,7 +16,7 @@ import * as store from "@/lib/store";
 import { plain } from "@/lib/text";
 import type { Entry } from "@/lib/types";
 
-const APP = ["/", "/entry/", "/talk/", "/insights/", "/settings/"];
+const APP = ["/", "/entry/", "/talk/", "/insights/", "/settings/", "/journal/"];
 const norm = (p: string) => (p.endsWith("/") ? p : p + "/");
 
 export function Shell({ children }: { children: ReactNode }) {
@@ -25,6 +28,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <Suspense fallback={<aside className="sidebar" />}><Sidebar /></Suspense>
       <div className="pane" data-pane>
         <div className="pane-scroll">{children}</div>
+        <NavPill />
       </div>
     </div>
   );
@@ -49,9 +53,9 @@ function Sidebar() {
   return (
     <aside className="sidebar" aria-label="Your journal">
       <div className="side-head">
-        <Link href="/" aria-label="Mindly home"><Mark size={28} /></Link>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}><Link href="/" aria-label="Mindly home"><Mark size={28} /></Link><StreakPill /></div>
+        <EngineToggle />
         <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-          <Link className="icon-btn" href="/insights/" aria-label="Insights"><Icon name="chart" /></Link>
           <Link className="avatar" href="/settings/" aria-label="Settings">{(me!.name || me!.email)[0].toUpperCase()}</Link>
         </div>
       </div>

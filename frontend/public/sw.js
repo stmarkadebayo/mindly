@@ -25,3 +25,13 @@ self.addEventListener("fetch", (e) => {
         || Response.error()),
   );
 });
+
+// The daily nudge. The text comes from the server and never contains journal content.
+self.addEventListener("push", (e) => {
+  const d = e.data ? e.data.json() : { title: "Mindly", body: "Got a minute?" };
+  e.waitUntil(self.registration.showNotification(d.title, { body: d.body, icon: "/icon-192.png", badge: "/icon-192.png", tag: "mindly-daily" }));
+});
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  e.waitUntil(clients.matchAll({ type: "window" }).then((cs) => (cs.length ? cs[0].focus() : clients.openWindow("/"))));
+});

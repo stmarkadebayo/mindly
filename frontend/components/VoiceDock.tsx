@@ -3,6 +3,7 @@
 // parent dims the page (the parent reacts to `onLive`). Used on Home (new entries) and on an entry (continue).
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { clock, MicDeniedError, Recorder, WARN_SECONDS, type Recording } from "@/lib/recorder";
+import { roomMode } from "@/lib/prefs";
 import { MicDenied } from "./Bits";
 import { ArrowDown } from "./Hand";
 import { Icon } from "./Icon";
@@ -83,7 +84,8 @@ export const VoiceDock = forwardRef<VoiceHandle, Props>(function VoiceDock(
     const rec = new Recorder({
       onTick: (s) => { setSecs(s); if (s === WARN_SECONDS) toast("One minute left in this recording. You can keep going right after."); },
       onAutoStop: (reason) => finishRef.current(reason),
-    });
+      onQuiet: () => toast("I'm barely hearing anything. Move the phone closer, or turn on Room mode in Settings for a faraway speaker."),
+    }, roomMode());
     recorder.current = rec; // claim the slot first so a double tap can't open two microphones
     try {
       await handlers.current.beforeStart?.();

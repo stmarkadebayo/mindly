@@ -154,3 +154,12 @@ a.row:active, button.row:active { opacity: 0.6; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* ---------- action suggestions (small card, not a modal) ---------- */
+.suggest { position: fixed; left: 50%; top: calc(64px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 20; width: min(420px, calc(100% - 32px)); padding: var(--sp3) var(--sp4); border-radius: 18px; animation: pop 0.4s var(--spring); }
+.suggest-text { margin: 0 0 var(--sp2); font-size: 14px; line-height: 1.4; }
+.suggest-actions { display: flex; gap: var(--sp2); }
+
+.suggest-inline { margin-top: var(--sp3); padding: var(--sp3) var(--sp4); border-radius: 16px; }
+.suggest-inline + .suggest-inline { margin-top: var(--sp2); }
+.suggest-undo { display: flex; align-items: center; gap: var(--sp2); margin-top: var(--sp2); font-size: 13px; color: var(--muted); }

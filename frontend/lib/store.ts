@@ -143,6 +143,32 @@ export async function exportAll() {
   return { app: "Mindly", exported: now(), entries: await entries(), chats: await chats(), recordings, images };
 }
 
+const toBlob = async (dataUrl: string) => (await fetch(dataUrl)).blob();
+
+/**
+ * Merge an exported journal into this one (the way to bring two devices in line without any server).
+ * Entries and chats are matched by id and the most recently edited copy wins; recordings and photos
+ * are added when missing. Nothing is deleted. Returns how many entries were added or updated.
+ */
+export async function importAll(data: any): Promise<number> {
+  if (data?.app !== "Mindly" || !Array.isArray(data.entries)) throw new Error("That doesn't look like a Mindly export.");
+  const mine = new Map((await entries()).map((e) => [e.id, e]));
+  const take = (data.entries as Entry[]).filter((e) => e?.id && typeof e.created === "string" && (!mine.has(e.id) || (e.updated ?? "") > mine.get(e.id)!.updated));
+  await putEntries(take);
+  const have = async (name: string) => new Set(await req<IDBValidKey[]>(tx(name).getAllKeys()));
+  for (const [name, rows] of [["audio", data.recordings], ["images", data.images]] as const) {
+    const present = await have(name);
+    for (const r of Array.isArray(rows) ? rows : []) {
+      if (r?.id && r.dataUrl && !present.has(r.id)) await req(tx(name, "readwrite").put({ id: r.id, entryId: r.entryId, blob: await toBlob(r.dataUrl) }));
+    }
+  }
+  const myChats = new Map((await chats()).map((c) => [c.id, c]));
+  for (const c of Array.isArray(data.chats) ? (data.chats as Chat[]) : []) {
+    if (c?.id && (!myChats.has(c.id) || c.updated > myChats.get(c.id)!.updated)) await req(tx("chats", "readwrite").put(c));
+  }
+  return take.length;
+}
+
 export async function wipe(userId: string) {
   close();
   await req(indexedDB.deleteDatabase(`mindly-${userId}`));
