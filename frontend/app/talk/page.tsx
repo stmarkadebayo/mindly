@@ -1,9 +1,9 @@
 "use client";
-import { plain } from "@/lib/text";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, Suspense, useEffect, useRef, useState } from "react";
-import { MicDenied, SupportCard, TopBar } from "@/components/Bits";
+import { MicDenied, SupportCard } from "@/components/Bits";
+import { ReflectHome } from "@/components/ReflectHome";
 import { Mark } from "@/components/Hand";
 import { Icon } from "@/components/Icon";
 import { Orb } from "@/components/Orb";
@@ -13,22 +13,32 @@ import { api, ApiError } from "@/lib/api";
 import { shortDate } from "@/lib/content";
 import { pickContext } from "@/lib/context";
 import { streamCompanion } from "@/lib/stream";
-import { roomMode, speechEngine } from "@/lib/prefs";
+import { roomMode } from "@/lib/prefs";
 import { MicDeniedError, Recorder } from "@/lib/recorder";
 import * as store from "@/lib/store";
+import { plain } from "@/lib/text";
 import type { Chat, ChatMessage, Entry } from "@/lib/types";
 
 export default function TalkPage() {
-  return <Suspense><Talk /></Suspense>;
+  return <Suspense><Router /></Suspense>;
+}
+
+/** No parameters: the Reflect home, with every saved conversation. Otherwise a conversation. */
+function Router() {
+  const params = useSearchParams();
+  const inside = params.get("entry") || params.get("chat") || params.get("new");
+  return inside ? <Talk /> : <ReflectHome />;
 }
 
 function Talk() {
   const params = useSearchParams();
   const anchorId = params.get("entry");
   const fresh = params.get("new") === "1";
+  const chatId = params.get("chat");
+  const say = params.get("say");   // a starter: the first thing to say, sent as soon as the conversation opens
   const me = useMe();
   const router = useRouter();
-  const { toast, sheet } = useUI();
+  const { toast, sheet, confirm } = useUI();
   const [chat, setChat] = useState<Chat | null>(null);
   const [byId, setById] = useState<Record<string, Entry>>({});
   const [anchor, setAnchor] = useState<Entry | null>(null);
@@ -48,13 +58,14 @@ function Talk() {
       const a = anchorId ? all.find((e) => e.id === anchorId) ?? null : null;
       if (anchorId && !a) return router.replace("/");
       setAnchor(a);
-      let c = anchorId ? await store.chatForEntry(anchorId) : fresh ? null : (await store.chats()).find((x) => !x.entryId) ?? null;
+      let c = chatId ? (await store.chats()).find((x) => x.id === chatId) ?? null : anchorId ? await store.chatForEntry(anchorId) : null;
       c ??= { id: store.uid(), entryId: anchorId, created: store.now(), updated: store.now(), messages: [] };
       setChat(c);
       if (a && !c.messages.length) ask(c); // the first tap on Reflect is enough to get an insight
+      else if (say && !c.messages.length) { const next = { ...c, messages: [{ role: "user" as const, content: say }] }; setChat(next); await store.saveChat(next); router.replace(`/talk/?chat=${next.id}`); ask(next); }
     })();
     return () => { mic.current?.stop(false); };
-  }, [anchorId, fresh]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [anchorId, fresh, chatId]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { window.scrollTo({ top: document.body.scrollHeight, behavior: draft ? "auto" : "smooth" }); }, [chat, busy, support, draft]);
 
@@ -80,14 +91,15 @@ function Talk() {
     } finally { setBusy(false); setDraft(""); }
   }
 
-  const send = async (e?: React.FormEvent) => {
+  const send = async (e?: React.FormEvent, said?: string) => {
     e?.preventDefault();
-    const content = text.trim();
+    const content = (said ?? text).trim();
     if (!content || busy || !chat) return;
     setText("");
     const next = { ...chat, messages: [...chat.messages, { role: "user" as const, content }] };
     setChat(next);
     await store.saveChat(next);
+    if (!chatId && !anchorId) router.replace(`/talk/?chat=${next.id}`);   // from here on this conversation has its own address
     ask(next);
   };
 
@@ -102,9 +114,7 @@ function Talk() {
       try {
         const form = new FormData();
         form.append("audio", r.blob, `message.${r.ext}`);
-        form.append("language", me.profile.speechLanguage || "");
         if (roomMode()) form.append("room", "1");
-        if (speechEngine() === "alt") form.append("engine", "alt");
         const heard = await api<{ text: string; no_speech: boolean }>("/api/transcribe", { method: "POST", form });
         if (heard.no_speech) toast("No words came through. Try again?");
         else setText((t) => (t ? t + " " : "") + heard.text);
@@ -116,17 +126,33 @@ function Talk() {
     catch (err) { err instanceof MicDeniedError ? sheet((close) => <MicDenied close={close} />, undefined, "alert") : toast((err as Error).message); }
   };
 
+  const firstSaid = chat?.messages.find((m) => m.role === "user")?.content;
+  const title = anchor ? `About “${anchor.title || "this entry"}”` : firstSaid ? firstSaid.slice(0, 48) : "New reflection";
+  const options = () => sheet((close) => (
+    <>
+      <h2>{title}</h2>
+      <div className="group">
+        <button className="row btn-danger" onClick={async () => {
+          close();
+          if (!chat || !(await confirm({ title: "Delete this conversation?", body: "It's removed from this device and can't be brought back.", action: "Delete" }))) return;
+          await store.deleteChat(chat.id); toast("Conversation deleted"); router.replace("/talk/");
+        }}><span className="grow">Delete conversation</span></button>
+      </div>
+    </>
+  ));
+
   const greeting: ChatMessage | null = anchorId ? null : {
     role: "assistant", content: `Hi${first ? ` ${first}` : ""}. What's on your mind? Say as much or as little as you like. You can type, or tap the orb to talk.`,
   };
 
   return (
     <main className="screen">
-      <TopBar back={anchorId ? `/entry/?id=${anchorId}` : "/"} title={anchor ? `Reflecting on “${anchor.title || "this entry"}”` : "Talk it through"}
-        right={anchorId ? undefined : <Link className="icon-btn" href="/talk/?new=1" aria-label="New conversation"><Icon name="compose" /></Link>} />
-      <p className="footnote" style={{ textAlign: "center", margin: "0 0 8px" }}>
-        Mindly listens and reflects using your journal. It isn&apos;t a therapist. <Link href="/support/">Need support?</Link>
-      </p>
+      <header className="convo-head">
+        <button className="icon-btn" aria-label={anchorId ? "Back to the entry" : "Back to Reflect"} onClick={() => router.push(anchorId ? `/entry/?id=${anchorId}` : "/talk/")}><Icon name="back" /></button>
+        <h1 className="convo-title">{title}</h1>
+        <button className="icon-btn" aria-label="Conversation options" onClick={options}><Icon name="more" /></button>
+      </header>
+      <p className="ai-note">Mindly isn&apos;t a therapist. <Link href="/support/">Need support?</Link></p>
       <div className="thread">
         {greeting && <Message m={greeting} byId={byId} anchorId={anchorId} />}
         {chat?.messages.map((m, i) => <Message key={i} m={m} byId={byId} anchorId={anchorId} />)}
