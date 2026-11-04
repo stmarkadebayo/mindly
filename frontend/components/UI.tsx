@@ -8,7 +8,7 @@ type Kind = "sheet" | "alert";
 type Confirm = { title: string; body: string; action: string; cancel?: string; danger?: boolean };
 
 interface UIContext {
-  toast: (message: string) => void;
+  toast: (message: string, action?: { label: string; run: () => void }) => void;
   /** A bottom sheet for content you work in, or (kind "alert") a small centred dialog for a message or a choice. */
   sheet: (render: Render, onClose?: () => void, kind?: Kind) => () => void;
   confirm: (c: Confirm) => Promise<boolean>;
@@ -20,17 +20,17 @@ export const useUI = () => useContext(Ctx)!;
 interface Layer { id: number; render: Render; onClose?: () => void; kind: Kind }
 
 export function UIProvider({ children }: { children: ReactNode }) {
-  const [toastText, setToast] = useState<string | null>(null);
+  const [toastText, setToast] = useState<{ text: string; action?: { label: string; run: () => void } } | null>(null);
   const [layers, setLayers] = useState<Layer[]>([]);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const nextId = useRef(0);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  const toast = useCallback((message: string) => {
-    setToast(message);
+  const toast = useCallback((message: string, action?: { label: string; run: () => void }) => {
+    setToast({ text: message, action });
     clearTimeout(timer.current);
-    timer.current = setTimeout(() => setToast(null), 3600);
+    timer.current = setTimeout(() => setToast(null), action ? 8000 : 3600);   // long enough to change your mind
   }, []);
 
   const sheet = useCallback((render: Render, onClose?: () => void, kind: Kind = "sheet") => {
@@ -79,7 +79,12 @@ export function UIProvider({ children }: { children: ReactNode }) {
               </div>
             );
           })}
-          {toastText && <div className="toast glass" role="status">{toastText}</div>}
+          {toastText && (
+            <div className="toast glass" role="status">
+              {toastText.text}
+              {toastText.action && <button className="toast-action" onClick={() => { toastText.action!.run(); setToast(null); }}>{toastText.action.label}</button>}
+            </div>
+          )}
         </>,
         document.body,
       )}

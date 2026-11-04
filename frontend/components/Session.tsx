@@ -13,7 +13,7 @@ import { Keypad } from "./Keypad";
 
 interface SessionContext {
   me: User | null;
-  config: { google_client_id?: string | null; asr_alt?: string | null; vapid_public_key?: string | null; billing?: boolean; pro_price?: string; free_minutes?: number };
+  config: { google_client_id?: string | null; vapid_public_key?: string | null; billing?: boolean; prices?: Partial<Record<"NGN" | "USD", string>>; free_minutes?: number };
   setMe: (u: User) => void;
   signedIn: (u: User) => Promise<void>;
   signOut: () => Promise<void>;
@@ -39,7 +39,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const signedIn = useCallback(async (u: User) => {
     await store.open(u.id);
     if (u.email.toLowerCase() === DEMO_EMAIL) await addSample().catch(() => {}); // judges land on a journal that is already full
-    pipeline.setLanguage(u.profile.speechLanguage || "");
     setMeState(u);
     setLocked(hasPin(u.id));
     pipeline.resumeAll();

@@ -56,20 +56,3 @@ export function ArrowDown({ size = 40 }: { size?: number }) {
     </svg>
   );
 }
-
-/** A few hand-drawn sparkles for the welcome screen. */
-export function Sparkles({ className }: { className?: string }) {
-  const star = (x: number, y: number, s: number, c: string) => (
-    <path key={`${x}${y}`} d={`M${x} ${y - s} L${x} ${y + s} M${x - s} ${y} L${x + s} ${y}`} stroke={c} />
-  );
-  return (
-    <svg viewBox="0 0 120 100" className={className} aria-hidden="true">
-      <g filter="url(#rough)" strokeWidth="2.6" strokeLinecap="round" fill="none">
-        {star(26, 30, 9, "var(--lavender)")}
-        {star(92, 18, 6, "var(--glacier)")}
-        {star(70, 70, 8, "var(--lavender)")}
-        {star(18, 78, 5, "var(--glacier)")}
-      </g>
-    </svg>
-  );
-}

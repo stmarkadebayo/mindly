@@ -26,7 +26,7 @@
   --shadow: 0 8px 32px -12px rgba(60, 45, 140, 0.22), 0 2px 6px rgba(23, 22, 29, 0.04);
 
   --hand: var(--font-hand), "Bradley Hand", "Segoe Print", cursive;
-  --ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif;
+  --ui: var(--font-hand), "Bradley Hand", -apple-system, system-ui, sans-serif;  /* one face for the whole app */
 
   --sp1: 4px; --sp2: 8px; --sp3: 12px; --sp4: 16px; --sp5: 24px; --sp6: 32px;
   --r-control: 10px; --r-surface: 18px;
