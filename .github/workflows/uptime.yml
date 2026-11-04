@@ -1,10 +1,11 @@
 name: Uptime
 
-# Checks the live site every 10 minutes. If a check fails, the run fails and GitHub emails the person who last
-# edited this schedule (Settings > Notifications > Actions must allow failed-run emails, which is the default).
+# A full daily check of the live site: reachable over HTTPS, API keys set, certificate not about to expire. If a check
+# fails, the run fails and GitHub emails the person who last edited this schedule. Once a day keeps a private repo well
+# inside the free Actions minutes.
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "0 7 * * *"   # 08:00 in Lagos
   workflow_dispatch:
     inputs:
       url:
