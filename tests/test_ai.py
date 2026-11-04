@@ -187,7 +187,7 @@ def test_openrouter_requests_exclude_providers_that_collect_data(monkeypatch):
     monkeypatch.setattr(config, "LLM_DENY_DATA_COLLECTION", True)
     client, seen = scripted([{"role": "assistant", "content": '{"title": "T", "body": "B"}'}])
     write_entry("hello there", client=client)
-    assert seen[0]["provider"] == {"data_collection": "deny"}
+    assert seen[0]["provider"] == {"sort": "latency", "data_collection": "deny"}
 
 
 def test_other_endpoints_get_no_provider_field(monkeypatch):
@@ -202,7 +202,7 @@ def test_privacy_routing_can_be_turned_off(monkeypatch):
     monkeypatch.setattr(config, "LLM_DENY_DATA_COLLECTION", False)
     client, seen = scripted([{"role": "assistant", "content": '{"title": "T", "body": "B"}'}])
     write_entry("hello there", client=client)
-    assert "provider" not in seen[0]
+    assert seen[0]["provider"] == {"sort": "latency"}  # still the quickest provider, just without the privacy filter
 
 
 def test_companion_prompt_is_helpful_and_multilingual():
@@ -333,6 +333,19 @@ def test_writer_keeps_only_well_formed_actions():
                    {"kind": "task", "text": "Submit the form", "when": None}]
 
 
+def test_a_day_without_a_time_is_reminded_in_the_morning_not_at_midnight():
+    from mindly import writer
+    got = writer.clean_actions([{"kind": "reminder", "text": "Call my mum", "when": "2026-11-05T00:00"},
+                                {"kind": "reminder", "text": "Pay rent", "when": "2026-11-05"}])
+    assert [a["when"] for a in got] == ["2026-11-05T09:00", "2026-11-05T09:00"]
+
+
+def test_anything_with_a_time_is_offered_as_a_reminder():
+    from mindly import writer
+    got = writer.clean_actions([{"kind": "task", "text": "Call my mum", "when": "2026-11-05T09:00"}])
+    assert got == [{"kind": "reminder", "text": "Call my mum", "when": "2026-11-05T09:00"}]
+
+
 def test_reflect_prompt_is_conversational_by_default():
     from mindly import reflect
     assert "Do not offer suggestions" in reflect.BASE_PROMPT
@@ -349,3 +362,106 @@ def test_open_tasks_are_listed_in_the_prompt():
     client, seen = scripted([{"role": "assistant", "content": '{"title": "T", "body": "B", "done": ["a#0"]}'}])
     out = write_entry("I called the landlord", client=client, open_tasks=[{"id": "a#0", "text": "Call the landlord"}])
     assert out["done"] == ["a#0"] and "a#0: Call the landlord" in str(seen[0])
+
+
+def test_writer_keeps_only_well_formed_hard_to_hear_marks():
+    from mindly.writer import tidy_marks
+    assert tidy_marks("I met ⟦Tunde's cousin⟧ today") == "I met ⟦Tunde's cousin⟧ today"
+    assert tidy_marks("one ⟦a⟧ and ⟦b⟧") == "one ⟦a⟧ and ⟦b⟧"
+    assert tidy_marks("empty ⟦ ⟧ here") == "empty  here"
+    assert tidy_marks("stray ⟦ never closed") == "stray  never closed"
+    assert tidy_marks("nested ⟦a ⟦b⟧ c⟧") == "nested a ⟦b⟧ c"
+
+
+def test_insights_ask_for_specifics_and_skip_what_the_person_rejected():
+    from mindly.insights import insights, SYSTEM_PROMPT
+    assert "Skip the obvious" in SYSTEM_PROMPT and "Never give advice" in SYSTEM_PROMPT
+    good = {"content": json.dumps({"headline": "H", "themes": [{"label": "T", "ids": ["1"]}], "noticed": [], "try": "What changed?"})}
+    client, seen = scripted([good])
+    insights(JOURNAL, client=client, avoid=["You value rest."], keep=["Work pressure"])
+    asked = seen[0]["messages"][1]["content"]
+    assert "not quite right" in asked and "You value rest." in asked
+    assert "Reuse a label" in asked and "Work pressure" in asked
+
+
+
+# --- long recordings ------------------------------------------------------------
+
+def test_short_transcripts_stay_whole_and_long_ones_split_at_sentence_ends():
+    from mindly import writer
+    assert writer.pieces("One. Two.") == ["One. Two."]
+    long = " ".join(f"Sentence number {i} is here." for i in range(2000))
+    parts = writer.pieces(long)
+    assert len(parts) > 1 and all(len(p) <= writer.PIECE_CHARS + 40 for p in parts)
+    assert all(p.endswith(".") for p in parts)
+    assert " ".join(parts) == long  # nothing lost or reordered
+
+
+def test_unpunctuated_speech_is_still_cut_into_pieces():
+    from mindly import writer
+    parts = writer.pieces("word " * 20_000)
+    assert len(parts) > 1 and all(len(p) <= writer.PIECE_CHARS * 2 for p in parts)
+    assert sum(len(p.split()) for p in parts) == 20_000
+
+
+def test_a_long_page_is_written_in_parallel_pieces_and_joined_in_order(monkeypatch):
+    import threading
+    import time
+    from mindly import writer
+    seen, running, peak = [], [0], [0]
+    lock = threading.Lock()
+
+    def fake(part, prompt=None, continuing=False, client=None, now=None, open_tasks=None):
+        with lock:
+            running[0] += 1; peak[0] = max(peak[0], running[0])
+        time.sleep(0.05)
+        with lock:
+            running[0] -= 1
+        seen.append((prompt, continuing))
+        n = part.split()[2]
+        return {"title": f"Title {n}", "body": f"Page from {n}.", "actions": [{"kind": "task", "text": f"t{n}", "when": None}], "done": []}
+
+    monkeypatch.setattr(writer, "write_entry", fake)
+    long = " ".join(f"Sentence number {i} is here." for i in range(2000))
+    out = writer.write_page(long, prompt="How was today?")
+    n = len(writer.pieces(long))
+    assert peak[0] > 1                                    # pieces really ran at the same time
+    assert out["title"] == "Title 0"                      # the title comes from the start
+    assert out["body"].split("\n\n")[0] == "Page from 0." and out["body"].count("Page from") == n
+    assert len(out["actions"]) == writer.MAX_ACTIONS
+    assert seen.count(("How was today?", False)) == 1 and seen.count((None, True)) == n - 1  # only the first piece answers the prompt
+
+
+def test_a_piece_that_fails_keeps_the_spoken_words_but_all_failing_is_an_error(monkeypatch):
+    from mindly import writer
+    long = " ".join(f"Sentence number {i} is here." for i in range(2000))
+    calls = []
+
+    def flaky(part, *a, **k):
+        calls.append(part)
+        if len(calls) == 2:
+            raise writer.WritingError("model hiccup")
+        return {"title": "T", "body": "Written.", "actions": [], "done": []}
+
+    monkeypatch.setattr(writer, "write_entry", flaky)
+    out = writer.write_page(long)
+    assert "Sentence number" in out["body"] and "Written." in out["body"]
+
+    monkeypatch.setattr(writer, "write_entry", lambda *a, **k: (_ for _ in ()).throw(writer.WritingError("down")))
+    with pytest.raises(writer.WritingError):
+        writer.write_page(long)
+
+
+def test_a_summarised_page_is_asked_for_again_and_the_fuller_one_kept():
+    spoken = " ".join(f"I did thing number {i} today." for i in range(60))  # 360 words
+    full = json.dumps({"title": "T", "body": spoken})
+    short = json.dumps({"title": "T", "body": "I did many things today."})
+    client, seen = scripted([{"role": "assistant", "content": short}, {"role": "assistant", "content": full}])
+    assert write_entry(spoken, client=client)["body"] == spoken and len(seen) == 2
+
+    client, seen = scripted([{"role": "assistant", "content": short}, {"role": "assistant", "content": short}])
+    assert write_entry(spoken, client=client)["body"] == "I did many things today."  # both short: keep what there is
+
+    client, seen = scripted([{"role": "assistant", "content": json.dumps({"title": "T", "body": "Short and fine."})}])
+    write_entry("um so yeah I had a good day you know", client=client)
+    assert len(seen) == 1  # short recordings shrink legitimately when fillers go; no second ask

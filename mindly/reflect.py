@@ -62,7 +62,13 @@ something they said mattered. If history is thin, reflect on this entry alone. D
 an open invitation to say more."""
 
 TALK_MODE = """They opened "Talk it through" to think out loud with you. Follow their lead. Help them get it out,
-then help them make sense of it. Bring in past entries only when it genuinely helps."""
+then help them make sense of it. Bring in past entries only when it genuinely helps.
+
+Shape the conversation like a good listener, one step at a time:
+- Ask one question at a time, never two. Early on use open questions about feeling ("how did that sit with you?");
+  once you understand the situation, use specific ones ("what exactly did he say?", "when did this start?").
+- Follow up on what they just said, especially why something mattered, before moving to anything new.
+- Let it end when they are ready. Don't push to keep going, and don't wrap up for them."""
 
 FIRST_INSIGHT = "Reflect on this entry with me."
 
@@ -220,3 +226,4 @@ def companion_events(entries: list[dict], messages: list[dict], anchor_id: str |
         yield {"t": "reset"}
         _run_calls(chat, done["content"], done["tool_calls"], index, refs, anchor_id)
     yield {"t": "final", **_finish(reply, refs, latest)}
+

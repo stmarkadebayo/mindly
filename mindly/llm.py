@@ -31,8 +31,9 @@ def _request(model: str, messages: list[dict], tools: list[dict] | None, tempera
         payload["tools"] = tools
     if max_tokens:
         payload["max_tokens"] = max_tokens
-    if config.LLM_DENY_DATA_COLLECTION and "openrouter.ai" in config.LLM_BASE_URL:
-        payload["provider"] = {"data_collection": "deny"}
+    if "openrouter.ai" in config.LLM_BASE_URL:
+        # Prefer the quickest provider: default routing sometimes lands on one that takes 8s+ for a reply that usually takes 1s.
+        payload["provider"] = {"sort": "latency", **({"data_collection": "deny"} if config.LLM_DENY_DATA_COLLECTION else {})}
     if stream:
         payload["stream"] = True
     # Local servers like Ollama need no key; an empty Bearer header is invalid, so omit it.
