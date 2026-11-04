@@ -17,9 +17,9 @@ from mindly.accounts import TRIAL_DAYS, Accounts
 @pytest.fixture
 def main(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("ASR_ALT_BASE_URL", "http://alt")
     monkeypatch.setenv("PAYSTACK_SECRET_KEY", "sk_test")
-    monkeypatch.setenv("PAYSTACK_PLAN_CODE", "PLN_1")
+    monkeypatch.setenv("PAYSTACK_PLAN_NGN", "PLN_1")
+    monkeypatch.setenv("PAYSTACK_PLAN_USD", "PLN_2")
     monkeypatch.setenv("FREE_DAILY_SECONDS", "60")
     from mindly import config
     importlib.reload(config)
@@ -66,7 +66,6 @@ def test_free_speech_allowance_and_pro_only_features(main, monkeypatch):
     end_trial(main)
     assert c.get("/api/me").json()["plan"] == "free"
     assert speak(c, 40, room="1").status_code == 402       # room mode is Pro
-    assert speak(c, 40, engine="alt").status_code == 402   # so is the second engine
     assert speak(c, 40).status_code == 200                 # 40 of 60 seconds
     assert speak(c, 40).status_code == 200                 # allowed to finish a note that starts under the limit
     assert speak(c, 40).status_code == 402                 # 80 used: out for today
@@ -136,10 +135,54 @@ def test_checkout_and_manage_talk_to_paystack(main, monkeypatch):
     c = signed_in(main)
     assert c.post("/api/billing/checkout").json() == {"url": "https://paystack.test/pay"}
     sent = seen["transaction/initialize"]["json"]
-    assert sent["plan"] == "PLN_1" and sent["metadata"]["user_id"] and sent["email"]
+    assert sent["plan"] == "PLN_1" and sent["currency"] == "NGN" and sent["amount"] == 500000 and sent["metadata"]["user_id"] and sent["email"]
+    c.post("/api/billing/checkout", json={"currency": "usd"})
+    assert seen["transaction/initialize"]["json"]["plan"] == "PLN_2" and seen["transaction/initialize"]["json"]["amount"] == 500
     assert TestClient(main.app).post("/api/billing/checkout").status_code == 401
     assert c.post("/api/billing/portal").status_code == 404  # nothing to manage yet
     uid = c.get("/api/me").json()["id"]
     hook(c, {"event": "subscription.create", "data": {"subscription_code": "SUB_1", "customer": {"customer_code": "CUS_1", "email": "ada@example.com"}, "metadata": {"user_id": uid}}})
     assert c.post("/api/billing/portal").json() == {"url": "https://paystack.test/manage"}
     assert "subscription/SUB_1/manage/link" in seen
+
+
+def test_prices_and_region(main, monkeypatch):
+    from mindly import region
+    c = signed_in(main)
+    assert c.get("/api/config").json()["prices"] == {"NGN": "₦5,000/month", "USD": "$5/month"}
+    # One plan only: that currency is the fallback for everyone.
+    monkeypatch.setattr(main.config, "PAYSTACK_PLAN_USD", "")
+    assert c.get("/api/config").json()["prices"] == {"NGN": "₦5,000/month"}
+    seen = {}
+    monkeypatch.setattr(billing, "_call", lambda m, path, **kw: seen.update(kw) or {"authorization_url": "https://paystack.test/pay"})
+    c.post("/api/billing/checkout", json={"currency": "USD"})
+    assert seen["json"]["currency"] == "NGN"
+    # Region: a proxy header wins, private addresses are unknown, and a lookup is cached.
+    assert region.country({"cf-ipcountry": "ng"}, "1.2.3.4") == "NG"
+    assert region.country({}, "127.0.0.1") is None and region.country({}, "10.0.0.5") is None
+    calls = []
+    class Resp:
+        status_code, text = 200, "ng\n"
+    monkeypatch.setattr(region.httpx, "get", lambda *a, **k: calls.append(a) or Resp())
+    region._cache.clear()
+    assert region.country({"x-forwarded-for": "102.89.1.1, 10.0.0.1"}, "10.0.0.1") == "NG"
+    assert region.country({"x-forwarded-for": "102.89.1.1"}, None) == "NG" and len(calls) == 1
+    assert c.get("/api/region").json() == {"country": None}  # the test client is a private address
+
+
+def test_accounts_are_safe_to_use_from_many_threads_at_once(tmp_path):
+    """The server answers requests on several threads that share one database connection."""
+    from concurrent.futures import ThreadPoolExecutor
+    accounts = Accounts(tmp_path / "a.db")
+    uid = accounts.sign_up("ada@example.com", "correct horse")["id"]
+    token = accounts.new_session(uid)
+
+    def busy(_):
+        for _ in range(200):
+            accounts.add_seconds(uid, 1)
+            assert accounts.session_user(token)["id"] == uid
+            accounts.seconds_today(uid)
+
+    with ThreadPoolExecutor(8) as pool:
+        list(pool.map(busy, range(8)))
+    assert accounts.seconds_today(uid) == 8 * 200

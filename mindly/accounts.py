@@ -91,8 +91,12 @@ class Accounts:
         self.db = sqlite3.connect(str(path), check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys = ON")
+        self.db.execute("PRAGMA journal_mode = WAL")      # writes don't block reads, and commits are cheaper
+        self.db.execute("PRAGMA synchronous = NORMAL")
         self.db.executescript(SCHEMA)
-        self.lock = threading.Lock()
+        # One connection shared by the server's threads: every read and write goes through this lock, or two at once can fail.
+        # Re-entrant, so a read made inside a write that already holds it doesn't wait on itself.
+        self.lock = threading.RLock()
         self._migrate()
 
     def _migrate(self):
@@ -107,6 +111,10 @@ class Accounts:
         self.db.execute("UPDATE users SET trial_ends = ? WHERE trial_ends IS NULL", (time.time() + TRIAL_DAYS * 86400,))
         self.db.commit()
 
+    def _one(self, sql: str, args: tuple = ()) -> sqlite3.Row | None:
+        with self.lock:
+            return self.db.execute(sql, args).fetchone()
+
     def _public(self, row) -> dict | None:
         if not row:
             return None
@@ -119,7 +127,7 @@ class Accounts:
                 "trial_ends": row["trial_ends"], "paid_until": row["paid_until"]}
 
     def user(self, user_id: str) -> dict | None:
-        return self._public(self.db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone())
+        return self._public(self._one("SELECT * FROM users WHERE id = ?", (user_id,)))
 
     def sign_up(self, email: str, password: str, name: str = "") -> dict:
         email = email.strip().lower()
@@ -128,7 +136,7 @@ class Accounts:
         if len(password) < 8:
             raise AuthError("Use at least 8 characters for your password.")
         with self.lock:
-            if self.db.execute("SELECT 1 FROM users WHERE email = ?", (email,)).fetchone():
+            if self._one("SELECT 1 FROM users WHERE email = ?", (email,)):
                 raise AuthError("An account with this email already exists. Sign in instead.")
             user_id = secrets.token_hex(8)
             self.db.execute("INSERT INTO users (id, email, name, password, created, trial_ends) VALUES (?, ?, ?, ?, ?, ?)",
@@ -137,7 +145,7 @@ class Accounts:
         return self.user(user_id)
 
     def sign_in(self, email: str, password: str) -> dict:
-        row = self.db.execute("SELECT * FROM users WHERE email = ?", (email.strip().lower(),)).fetchone()
+        row = self._one("SELECT * FROM users WHERE email = ?", (email.strip().lower(),))
         if not row or not check_password(password, row["password"]):
             raise AuthError("That email and password don't match.")
         return self._public(row)
@@ -146,9 +154,9 @@ class Accounts:
         """Find or create the account for a verified Google identity."""
         email = email.strip().lower()
         with self.lock:
-            row = self.db.execute("SELECT * FROM users WHERE google_sub = ?", (sub,)).fetchone()
+            row = self._one("SELECT * FROM users WHERE google_sub = ?", (sub,))
             if not row:
-                row = self.db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+                row = self._one("SELECT * FROM users WHERE email = ?", (email,))
                 if row:  # Google has verified this email, so link it to the existing account
                     self.db.execute("UPDATE users SET google_sub = ? WHERE id = ?", (sub, row["id"]))
                     user_id = row["id"]
@@ -198,8 +206,7 @@ class Accounts:
             self.db.commit()
 
     def seconds_today(self, user_id: str) -> int:
-        row = self.db.execute("SELECT seconds FROM usage WHERE user_id = ? AND day = ?",
-                              (user_id, time.strftime("%Y-%m-%d", time.gmtime()))).fetchone()
+        row = self._one("SELECT seconds FROM usage WHERE user_id = ? AND day = ?", (user_id, time.strftime("%Y-%m-%d", time.gmtime())))
         return row["seconds"] if row else 0
 
     def set_paid_until(self, user_id: str, until: float, customer: str | None = None):
@@ -215,13 +222,13 @@ class Accounts:
             self.db.commit()
 
     def by_customer(self, customer: str) -> dict | None:
-        return self._public(self.db.execute("SELECT * FROM users WHERE pay_customer = ?", (customer,)).fetchone()) if customer else None
+        return self._public(self._one("SELECT * FROM users WHERE pay_customer = ?", (customer,))) if customer else None
 
     def by_email(self, email: str) -> dict | None:
-        return self._public(self.db.execute("SELECT * FROM users WHERE email = ?", (email.strip().lower(),)).fetchone()) if email else None
+        return self._public(self._one("SELECT * FROM users WHERE email = ?", (email.strip().lower(),))) if email else None
 
     def subscription(self, user_id: str) -> str | None:
-        row = self.db.execute("SELECT pay_subscription FROM users WHERE id = ?", (user_id,)).fetchone()
+        row = self._one("SELECT pay_subscription FROM users WHERE id = ?", (user_id,))
         return row["pay_subscription"] if row else None
 
     # --- daily reminder ---------------------------------------------------------
@@ -239,7 +246,8 @@ class Accounts:
             self.db.commit()
 
     def reminders(self) -> list[sqlite3.Row]:
-        return self.db.execute("SELECT * FROM push").fetchall()
+        with self.lock:
+            return self.db.execute("SELECT * FROM push").fetchall()
 
     def claim_reminder(self, user_id: str, local_day: str) -> bool:
         """True for exactly one caller per person per day, so two server instances never both send."""
@@ -250,8 +258,7 @@ class Accounts:
             return cur.rowcount == 1
 
     def entries_today(self, user_id: str) -> int:
-        row = self.db.execute("SELECT entries FROM usage WHERE user_id = ? AND day = ?",
-                              (user_id, time.strftime("%Y-%m-%d", time.gmtime()))).fetchone()
+        row = self._one("SELECT entries FROM usage WHERE user_id = ? AND day = ?", (user_id, time.strftime("%Y-%m-%d", time.gmtime())))
         return row["entries"] if row else 0
 
     # --- sessions -----------------------------------------------------------
@@ -267,8 +274,8 @@ class Accounts:
     def session_user(self, token: str | None) -> dict | None:
         if not token:
             return None
-        row = self.db.execute("SELECT user_id, expires FROM sessions WHERE token_hash = ?",
-                              (_token_hash(token),)).fetchone()
+        row = self._one("SELECT user_id, expires FROM sessions WHERE token_hash = ?",
+                              (_token_hash(token),))
         if not row or row["expires"] < time.time():
             return None
         return self.user(row["user_id"])
