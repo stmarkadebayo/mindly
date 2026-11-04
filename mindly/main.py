@@ -17,15 +17,16 @@ import httpx
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
-from . import billing, config, llm, reminders
+from . import billing, config, llm, region, reminders
 from .accounts import Accounts, AuthError
 from .asr import ASRError
 from .reflect import companion, companion_events
 from .insights import insights as insights_for
 from .safety import needs_support
-from .writer import WritingError, write_entry
+from .writer import WritingError, write_page
 
 COOKIE = "mindly_session"
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
@@ -88,6 +89,8 @@ class Limiter:
 
     def allow(self, key: str, limit: int, window: float) -> bool:
         now = time.time()
+        if len(self.hits) > 10_000:  # forget people who have gone quiet, so the table can't grow forever
+            self.hits = defaultdict(list, {k: v for k, v in self.hits.items() if v and v[-1] > now - 86400})
         recent = [t for t in self.hits[key] if t > now - window]
         self.hits[key] = recent
         if len(recent) >= limit:
@@ -137,8 +140,7 @@ class GoogleCredential(BaseModel):
 @app.get("/api/config")
 def public_config():
     return {"google_client_id": config.GOOGLE_CLIENT_ID or None, "vapid_public_key": config.VAPID_PUBLIC_KEY or None,
-            "asr_alt": config.ASR_ALT_LABEL if config.ASR_ALT_BASE_URL else None,
-            "billing": billing.enabled(), "pro_price": config.PRO_PRICE_LABEL, "free_minutes": config.FREE_DAILY_SECONDS // 60}
+            "billing": billing.enabled(), "prices": billing.prices(), "free_minutes": config.FREE_DAILY_SECONDS // 60}
 
 
 @app.post("/api/auth/signup")
@@ -225,18 +227,15 @@ def ai_quota(user: dict):
 
 
 @app.post("/api/transcribe")
-async def transcribe_audio(audio: UploadFile = File(...), language: str = Form(""), room: str = Form(""), engine: str = Form(""),
+async def transcribe_audio(audio: UploadFile = File(...), language: str = Form(""), room: str = Form(""),
                            user: dict = Depends(current_user)):
     ai_quota(user)
-    alt = engine == "alt"
     if user["plan"] != "pro":
-        if alt or room == "1":
-            pro_only(user, "Room mode and the second speech engine")
+        if room == "1":
+            pro_only(user, "Room mode")
         if accounts.seconds_today(user["id"]) >= config.FREE_DAILY_SECONDS:
             raise HTTPException(402, f"You've used today's {config.FREE_DAILY_SECONDS // 60} free minutes of speech. "
                                      "You can still type, or come back tomorrow, or go Pro for unlimited.")
-    if alt and not config.ASR_ALT_BASE_URL:
-        raise HTTPException(503, f"{config.ASR_ALT_LABEL} isn't connected on this server yet.")
     ext = (audio.filename or "audio.webm").rsplit(".", 1)[-1].lower()
     if ext not in AUDIO_TYPES:
         raise HTTPException(415, "Unsupported audio format.")
@@ -253,9 +252,9 @@ async def transcribe_audio(audio: UploadFile = File(...), language: str = Form("
         path.write_bytes(data)
         try:
             # Whisper has no Pidgin; for anything it doesn't know, let it auto-detect.
-            lang = language if alt or language in WHISPER_HINTS else None
-            extra = {**({"room": True} if room == "1" else {}), **({"alt": True} if alt else {})}
-            result = transcribe(path, lang, **extra)
+            lang = language if language in WHISPER_HINTS else None
+            # The speech call blocks for a second or more; off the event loop, other requests keep being served meanwhile.
+            result = await run_in_threadpool(transcribe, path, lang, room=room == "1")
         except ASRError as exc:
             raise HTTPException(502, str(exc))
         except Exception:
@@ -270,12 +269,22 @@ def site_base(request: Request) -> str:
     return str(request.base_url).rstrip("/")
 
 
+@app.get("/api/region")
+def where_from(request: Request, user: dict = Depends(current_user)):
+    """The country this request seems to come from, so the app can default to naira or dollars."""
+    return {"country": region.country(request.headers, request.client.host if request.client else None)}
+
+
+class Checkout(BaseModel):
+    currency: str = "NGN"
+
+
 @app.post("/api/billing/checkout")
-def billing_checkout(request: Request, user: dict = Depends(current_user)):
+def billing_checkout(request: Request, body: Checkout | None = None, user: dict = Depends(current_user)):
     if not billing.enabled():
         raise HTTPException(503, "Payments aren't switched on yet.")
     try:
-        return {"url": billing.checkout_url(user, site_base(request))}
+        return {"url": billing.checkout_url(user, site_base(request), (body.currency if body else "NGN").upper())}
     except RuntimeError:
         raise HTTPException(502, "Couldn't reach the payment service. Try again in a moment.")
 
@@ -340,7 +349,7 @@ class OpenTask(BaseModel):
 
 
 class WriteRequest(BaseModel):
-    transcript: str = Field(min_length=1, max_length=30_000)
+    transcript: str = Field(min_length=1, max_length=60_000)  # 30 minutes of fast speech is about 35,000 characters
     prompt: str | None = Field(default=None, max_length=300)
     continuing: bool = False
     now: str | None = Field(default=None, max_length=40)  # the device's local date and time, to resolve "Friday at 5"
@@ -351,10 +360,10 @@ class WriteRequest(BaseModel):
 def write(body: WriteRequest, user: dict = Depends(current_user)):
     ai_quota(user)
     try:
-        written = write_entry(body.transcript, body.prompt, body.continuing, now=body.now, open_tasks=[t.model_dump() for t in body.open_tasks])
+        written = write_page(body.transcript, body.prompt, body.continuing, now=body.now, open_tasks=[t.model_dump() for t in body.open_tasks])
     except (llm.LLMError, WritingError) as exc:
         raise HTTPException(502, str(exc))
-    return {**written, "support": needs_support(body.transcript)}
+    return {**written, "support": needs_support(body.transcript.replace("\u27e6", "").replace("\u27e7", ""))}
 
 
 class JournalEntry(BaseModel):
@@ -419,6 +428,8 @@ def talk(body: CompanionRequest, user: dict = Depends(current_user)):
 
 class InsightsRequest(BaseModel):
     entries: list[JournalEntry] = Field(max_length=60)
+    avoid: list[str] = Field(default_factory=list, max_length=20)   # observations the person said were not quite right
+    keep: list[str] = Field(default_factory=list, max_length=8)     # topic labels from the last reading, so topics stay familiar
 
 
 @app.post("/api/insights")
@@ -427,7 +438,7 @@ def ai_insights(body: InsightsRequest, user: dict = Depends(current_user)):
     if sum(len(e.body) for e in body.entries) > MAX_CONTEXT_CHARS:
         raise HTTPException(413, "That's more journal text than Mindly can read at once.")
     try:
-        return insights_for([e.model_dump() for e in body.entries], user["name"] or None)
+        return insights_for([e.model_dump() for e in body.entries], user["name"] or None, avoid=body.avoid, keep=body.keep)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     except llm.LLMError as exc:

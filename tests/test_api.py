@@ -75,7 +75,7 @@ def test_transcribe_and_write(main, monkeypatch):
     hints = []
     monkeypatch.setattr(mindly.asr, "transcribe",
                         lambda path, lang, room=False: hints.append(lang) or {"text": "um I finally finished it", "language": "en"})
-    monkeypatch.setattr(main, "write_entry", lambda t, p, c, now=None, open_tasks=None: {"title": "Done", "body": "I finally finished it."})
+    monkeypatch.setattr(main, "write_page", lambda t, p, c, now=None, open_tasks=None: {"title": "Done", "body": "I finally finished it."})
     c = signed_in(main)
     r = c.post("/api/transcribe", files={"audio": ("a.webm", b"x", "audio/webm")}, data={"language": "ha"}).json()
     assert r["text"] and r["no_speech"] is False
@@ -98,7 +98,7 @@ def test_rejects_unsupported_audio(main):
 
 def test_daily_ai_limit(main, monkeypatch):
     monkeypatch.setattr(main.config, "DAILY_AI_LIMIT", 2)
-    monkeypatch.setattr(main, "write_entry", lambda t, p, c, now=None, open_tasks=None: {"title": "T", "body": "B"})
+    monkeypatch.setattr(main, "write_page", lambda t, p, c, now=None, open_tasks=None: {"title": "T", "body": "B"})
     c = signed_in(main)
     codes = [c.post("/api/write", json={"transcript": "hello world"}).status_code for _ in range(3)]
     assert codes == [200, 200, 429]
@@ -128,7 +128,7 @@ def test_api_docs_are_not_public(main):
 
 def test_speech_service_outage_is_a_502_not_a_400(main, monkeypatch):
     import mindly.asr
-    def down(path, lang): raise mindly.asr.ASRError("Couldn't reach the speech service.")
+    def down(path, lang, room=False): raise mindly.asr.ASRError("Couldn't reach the speech service.")
     monkeypatch.setattr(mindly.asr, "transcribe", down)
     c = signed_in(main)
     r = c.post("/api/transcribe", files={"audio": ("a.webm", b"x", "audio/webm")})
@@ -168,21 +168,6 @@ def test_cache_headers_for_api_and_app(main, tmp_path, monkeypatch):
         assert c.get("/").headers.get("cache-control") == "no-cache"
 
 
-def test_alternative_engine_is_refused_until_it_is_connected_then_used(main, monkeypatch):
-    import mindly.asr
-    from mindly import config
-    monkeypatch.setattr(config, "ASR_ALT_BASE_URL", "")  # whatever the local .env says
-    monkeypatch.setattr(config, "ASR_ALT_LABEL", "NaijaVox")
-    c = signed_in(main)
-    send = lambda: c.post("/api/transcribe", files={"audio": ("a.webm", b"x", "audio/webm")}, data={"engine": "alt"})
-    assert c.get("/api/config").json()["asr_alt"] is None
-    assert send().status_code == 503
-    monkeypatch.setattr(config, "ASR_ALT_BASE_URL", "http://alt.test/v1")
-    monkeypatch.setattr(mindly.asr, "transcribe", lambda path, lang, **kw: {"text": f"alt={kw.get('alt')}", "language": "en"})
-    assert c.get("/api/config").json()["asr_alt"] == "NaijaVox"
-    assert send().json()["text"] == "alt=True"
-
-
 def test_usage_counts_are_recorded_and_removed_with_the_account(main):
     c = signed_in(main)
     assert c.post("/api/metric", json={"kind": "open"}).status_code == 200
@@ -207,3 +192,35 @@ def test_reminder_needs_keys_and_a_real_push_service(main, monkeypatch):
     evil = {**body, "subscription": {"endpoint": "https://169.254.169.254/x", "keys": {"p256dh": "x", "auth": "y"}}}
     assert c.put("/api/reminder", json=evil).status_code == 400  # the server must not be pointed at arbitrary addresses
     assert c.delete("/api/reminder").status_code == 200
+
+
+
+def test_transcriptions_run_side_by_side(main, monkeypatch):
+    """A slow speech call must not hold up the rest of the server: two at once take about as long as one."""
+    import asyncio
+    import time
+
+    import httpx
+    import mindly.asr
+
+    monkeypatch.setattr(mindly.asr, "transcribe", lambda path, lang, room=False: time.sleep(1) or {"text": "hello there friend", "language": "en"})
+    cookie = "; ".join(f"{k}={v}" for k, v in signed_in(main).cookies.items())
+
+    async def both():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://testserver", headers={"cookie": cookie}) as c:
+            send = lambda: c.post("/api/transcribe", files={"audio": ("a.webm", b"x", "audio/webm")})
+            start = time.perf_counter()
+            results = await asyncio.gather(send(), send(), c.get("/api/health"))
+            return time.perf_counter() - start, results
+
+    took, results = asyncio.run(both())
+    assert all(r.status_code == 200 for r in results), [(r.status_code, r.text[:120]) for r in results]
+    assert took < 1.6, f"transcriptions ran one after the other ({took:.2f}s)"  # one after the other takes 2s or more
+
+
+def test_limiter_forgets_idle_keys(main, monkeypatch):
+    lim = main.Limiter()
+    for i in range(10_001):
+        lim.hits[f"old{i}"] = [0.0]  # last seen in 1970
+    assert lim.allow("fresh", 5, 60)
+    assert set(lim.hits) == {"fresh"}
