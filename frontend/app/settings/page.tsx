@@ -9,15 +9,15 @@ import { useMe, useSession } from "@/components/Session";
 import { useUI } from "@/components/UI";
 import { api } from "@/lib/api";
 import { clearPin, hasPin, setPin } from "@/lib/lock";
+import { setTheme as applyTheme, theme as savedTheme, type Theme } from "@/lib/theme";
 import { planLine } from "@/lib/plan";
-import { roomMode, setRoomMode, setSkin, skin, type Skin } from "@/lib/prefs";
+import { useGoPro } from "@/components/GoPro";
+import { usePricing } from "@/lib/pricing";
+import { roomMode, setRoomMode } from "@/lib/prefs";
 import { disableReminder, enableReminder, savedTime } from "@/lib/reminder";
-import * as pipeline from "@/lib/pipeline";
 import * as sample from "@/lib/sample";
 import * as store from "@/lib/store";
 import type { User } from "@/lib/types";
-
-type Theme = "system" | "light" | "dark";
 
 export default function Settings() {
   const me = useMe();
@@ -29,14 +29,14 @@ export default function Settings() {
   const [locked, setLocked] = useState(false);
   const [samples, setSamples] = useState(0);
   const [room, setRoom] = useState(false);
-  const [look, setLook] = useState<Skin>("classic");
   const [paying, setPaying] = useState(false);
+  const pricing = usePricing(config.prices);
   const [remindAt, setRemindAt] = useState("20:00");
   const [reminding, setReminding] = useState(false);
-  useEffect(() => { setRoom(roomMode()); setLook(skin()); const t = savedTime(); if (t) { setRemindAt(t); setReminding(true); } }, []);
+  useEffect(() => { setRoom(roomMode()); const t = savedTime(); if (t) { setRemindAt(t); setReminding(true); } }, []);
 
   useEffect(() => {
-    try { setTheme((localStorage.getItem("mindly.theme") as Theme) || "system"); } catch {}
+    setTheme(savedTheme());
     setLocked(hasPin(me.id));
     sample.sampleCount().then(setSamples).catch(() => {});
   }, [me.id]);
@@ -46,16 +46,12 @@ export default function Settings() {
     catch (e) { toast((e as Error).message); }
   };
 
-  const chooseTheme = (t: Theme) => {
-    setTheme(t);
-    try { t === "system" ? localStorage.removeItem("mindly.theme") : localStorage.setItem("mindly.theme", t); } catch {}
-    if (t === "system") delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = t;
-  };
+  const chooseTheme = (t: Theme) => { setTheme(t); applyTheme(t); };
 
+  const goPro = useGoPro();
   const goToBilling = async (kind: "checkout" | "portal") => {
     setPaying(true);
-    try { window.location.href = (await api<{ url: string }>(`/api/billing/${kind}`, { method: "POST" })).url; }
+    try { window.location.href = (await api<{ url: string }>(`/api/billing/${kind}`, { method: "POST", json: kind === "checkout" ? { currency: pricing.currency } : undefined })).url; }
     catch (e) { toast((e as Error).message); setPaying(false); }
   };
 
@@ -145,22 +141,20 @@ export default function Settings() {
         <div className="row"><span className="grow">{planLine(me)}</span>
           {config.billing && (me.paid
             ? <button className="btn btn-tinted" disabled={paying} onClick={() => goToBilling("portal")}>Manage</button>
-            : <button className="btn btn-primary" disabled={paying} onClick={() => goToBilling("checkout")}>Go Pro · {config.pro_price}</button>)}
+            : <button className="btn btn-primary" disabled={paying} onClick={goPro}>Go Pro{pricing.label ? ` · ${pricing.label}` : ""}</button>)}
         </div>
+        {config.billing && !me.paid && pricing.options.length > 1 && (
+          <div className="row"><span className="grow">Pay in</span>
+            <div className="segmented">{pricing.options.map((c) => (
+              <button key={c} aria-pressed={pricing.currency === c} onClick={() => pricing.choose(c)}>{c === "NGN" ? "₦ Naira" : "$ Dollars"}</button>))}</div></div>
+        )}
       </div>
       <p className="footnote" style={{ margin: "6px 0 0" }}>{me.paid
-        ? "Thank you for backing Mindly. Unlimited speech, Room mode and the second speech engine are yours."
-        : `Pro is unlimited speech, Room mode and the second speech engine. The free plan has ${config.free_minutes ?? 10} minutes of speech a day, and writing and reading are always free.${config.billing ? "" : " Payments aren't switched on yet."}`}</p>
+        ? "Thank you for backing Mindly. Unlimited speech and Room mode are yours."
+        : `Pro is unlimited speech and Room mode. The free plan has ${config.free_minutes ?? 10} minutes of speech a day, and writing and reading are always free.${config.billing ? "" : " Payments aren't switched on yet."}`}</p>
 
       <h2 className="section-label">Recording</h2>
       <div className="group">
-        <label className="row"><span className="grow">Speech language</span>
-          <select className="detail" style={{ border: 0, background: "none" }} value={me.profile.speechLanguage || ""}
-            onChange={(e) => { pipeline.setLanguage(e.target.value); update({ profile: { ...me.profile, speechLanguage: e.target.value } }, "Speech language saved"); }}>
-            <option value="">Auto (English, Pidgin, Yoruba)</option><option value="yo">Yoruba only</option><option value="pcm">Pidgin (STORM engine)</option>
-          </select></label>
-      </div>
-      <div className="group" style={{ marginTop: 8 }}>
         <label className="row"><span className="grow">Room mode</span>
           <input type="checkbox" checked={room} onChange={(e) => { setRoom(e.target.checked); setRoomMode(e.target.checked); }} /></label>
       </div>
@@ -184,9 +178,6 @@ export default function Settings() {
         <div className="row"><span className="grow">Theme</span>
           <div className="segmented">{(["system", "light", "dark"] as Theme[]).map((t) => (
             <button key={t} aria-pressed={theme === t} onClick={() => chooseTheme(t)}>{t[0].toUpperCase() + t.slice(1)}</button>))}</div></div>
-        <div className="row"><span className="grow">Style</span>
-          <div className="segmented">{(["classic", "paper"] as Skin[]).map((s) => (
-            <button key={s} aria-pressed={look === s} onClick={() => { setLook(s); setSkin(s); }}>{s[0].toUpperCase() + s.slice(1)}</button>))}</div></div>
       </div>
 
       <h2 className="section-label">Privacy</h2>
