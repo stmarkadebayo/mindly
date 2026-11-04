@@ -6,8 +6,10 @@ import { OrbEngine } from "@/lib/orb";
  * The orb. Pass a live MediaStream and it reacts to the speaker's frequencies.
  * `thinking` swirls it on its own, for moments when Mindly is working (writing a page, composing a reply).
  */
-export function Orb({ stream, paused = false, thinking = false, idle = 1, pad = 1, className, style }: {
+export function Orb({ stream, paused = false, thinking = false, voice = false, idle = 1, pad = 1, className, style }: {
   stream?: MediaStream | null; paused?: boolean; thinking?: boolean; idle?: number;
+  /** Move as if someone were speaking, with no microphone (the landing page). */
+  voice?: boolean;
   /** Draw on a canvas this many times larger than the orb, so its glow has room to fade out. */
   pad?: number; className?: string; style?: React.CSSProperties;
 }) {
@@ -26,6 +28,7 @@ export function Orb({ stream, paused = false, thinking = false, idle = 1, pad = 
 
   useEffect(() => engine.current?.mute(paused), [paused]);
   useEffect(() => engine.current?.setThinking(thinking), [thinking]);
+  useEffect(() => engine.current?.setVoice(voice), [voice]);
 
   return <canvas ref={canvas} className={className} style={pad > 1
       ? { display: "block", width: `${pad * 100}%`, height: `${pad * 100}%`, maxWidth: "none", margin: `${-(pad - 1) * 50}%`, pointerEvents: "none", ...style }

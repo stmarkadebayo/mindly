@@ -34,7 +34,7 @@ interface Props {
 export const VoiceDock = forwardRef<VoiceHandle, Props>(function VoiceDock(
   { onRecording, onLive, beforeStart, hint = "Tap to talk", coach, anchor, anchorKey }, ref,
 ) {
-  const { toast, sheet, confirm } = useUI();
+  const { toast, sheet } = useUI();
   const recorder = useRef<Recorder | null>(null);
   const promptRef = useRef<string | null>(null);
   const [prompt, setPrompt] = useState<string | null>(null);
@@ -60,6 +60,7 @@ export const VoiceDock = forwardRef<VoiceHandle, Props>(function VoiceDock(
       const h = pane && getComputedStyle(pane).display !== "contents" ? pane.getBoundingClientRect() : null;
       const left = h?.left ?? 0, width = h?.width ?? innerWidth, bottom = h?.bottom ?? innerHeight;
       setSpot({ ox: r.left + r.width / 2 - (left + width / 2), oy: bottom - (r.top + r.height / 2), size: r.width });
+      setSettled(false);   // follow the window instantly; the spring is only for lifting into a recording
     };
     measure();
     const watcher = new ResizeObserver(measure);
@@ -118,17 +119,17 @@ export const VoiceDock = forwardRef<VoiceHandle, Props>(function VoiceDock(
   };
   finishRef.current = finish;
 
+  // Discarding is immediate, with a few seconds to take it back: a mis-tap should never cost what you just said.
   const cancel = async () => {
     const rec = recorder.current;
     if (!rec) return;
-    rec.pause();
-    setPaused(true);
-    if (await confirm({ title: "Discard this recording?", body: "What you just said won't be saved.", action: "Discard", cancel: "Keep recording" })) {
-      recorder.current = null;
-      await rec.stop(false);
-      setStream(null);
-      setLiveState(false);
-    } else { rec.resume(); setPaused(false); }
+    recorder.current = null;
+    const answering = promptRef.current;
+    const result = await rec.stop(true);
+    setStream(null);
+    setLiveState(false);
+    if (!result || result.seconds < 3) return;   // too short to be worth undoing
+    toast("Recording discarded", { label: "Undo", run: () => { handlers.current.onRecording(result, answering); } });
   };
 
   const togglePause = () => {

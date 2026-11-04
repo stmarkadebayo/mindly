@@ -18,22 +18,27 @@ export class OrbEngine {
   private bins: Uint8Array<ArrayBuffer> = new Uint8Array(0);
   private paused = false;
   private thinking = false;
+  private voice = false;
   private still = matchMedia("(prefers-reduced-motion: reduce)");
 
   /** `scale` > 1 means the canvas is larger than the orb, leaving room for its glow so it never gets clipped square. */
   constructor(private canvas: HTMLCanvasElement, public idle = 1, private scale = 1) {
     this.ctx = canvas.getContext("2d")!;
-    this.observer = new ResizeObserver(() => this.resize());
+    // Resizing a canvas wipes it, and ResizeObserver runs after this frame was drawn, so only note the new size here
+    // and apply it just before the next draw. Otherwise every frame of a window resize paints an empty orb.
+    this.observer = new ResizeObserver(([e]) => { this.size = [e.contentRect.width, e.contentRect.height]; });
     this.observer.observe(canvas);
-    this.resize();
+    const r = canvas.getBoundingClientRect();
+    this.size = [r.width, r.height];
     this.raf = requestAnimationFrame(this.frame);
   }
 
-  private resize() {
+  private size: [number, number] = [0, 0];
+  private fit() {
     const dpr = Math.min(devicePixelRatio || 1, 2);
-    const { width, height } = this.canvas.getBoundingClientRect();
-    this.canvas.width = Math.max(1, width * dpr);
-    this.canvas.height = Math.max(1, height * dpr);
+    const w = Math.max(1, Math.round(this.size[0] * dpr)), h = Math.max(1, Math.round(this.size[1] * dpr));
+    if (this.canvas.width !== w) this.canvas.width = w;
+    if (this.canvas.height !== h) this.canvas.height = h;
   }
 
   listen(stream: MediaStream) {
@@ -49,6 +54,11 @@ export class OrbEngine {
 
   mute(paused: boolean) {
     this.paused = paused;
+  }
+
+  /** Move as if someone were talking: syllables, louder words and short pauses. For showing the orb without a microphone. */
+  setVoice(on: boolean) {
+    this.voice = on;
   }
 
   /** Swirl on its own, like a held breath, while Mindly is working. */
@@ -75,6 +85,12 @@ export class OrbEngine {
     if (this.analyser && !this.paused) {
       this.analyser.getByteFrequencyData(this.bins);
       target = { low: this.band(80, 300) * 1.6, mid: this.band(300, 2000) * 1.8, high: this.band(2000, 8000) * 3 };
+    } else if (this.voice) {
+      const t = this.t;
+      const phrase = Math.sin(t * 0.9) + 0.6 * Math.sin(t * 0.37 + 1) > -0.6 ? 1 : 0;   // talk for a few seconds, then breathe
+      const syllable = Math.max(0, Math.sin(t * 21) * 0.7 + Math.sin(t * 13.7) * 0.5) ** 1.5;  // about three or four a second, with gaps
+      const word = 0.65 + 0.35 * Math.sin(t * 2.3);
+      target = { low: phrase * (0.2 + 0.9 * syllable * word), mid: phrase * (0.15 + 0.95 * syllable), high: phrase * 0.5 * Math.max(0, Math.sin(t * 9)) * syllable };
     } else if (this.thinking) {
       const t = this.t;
       target = { low: 0.22 + 0.08 * Math.sin(t * 2.2), mid: 0.32 + 0.18 * Math.sin(t * 3.1), high: 0.16 + 0.1 * Math.sin(t * 4.3) };
@@ -91,6 +107,7 @@ export class OrbEngine {
     const still = this.still.matches;
     this.t += still ? 0 : 1 / 60;
     this.sample();
+    this.fit();
     this.draw(still);
   };
 
