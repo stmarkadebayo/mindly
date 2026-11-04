@@ -23,7 +23,7 @@ export default function Privacy() {
         <li>Delete a single entry, your whole journal on this device, or your account.</li>
         <li>Clearing your browser&apos;s site data also deletes your journal, so export first if you want to keep it.</li>
       </ul>
-      <p className="footnote">Mindly is a prototype built for OPEN//BUILD 2026. App lock is a screen lock; it doesn&apos;t encrypt the stored journal.</p>
+      <p className="footnote">App lock is a screen lock; it doesn&apos;t encrypt the stored journal.</p>
     </Prose>
   );
 }

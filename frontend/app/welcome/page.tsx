@@ -10,7 +10,6 @@ import { useSession } from "@/components/Session";
 import { MOODS } from "@/lib/content";
 import { usePricing } from "@/lib/pricing";
 
-const REPO = "https://github.com/stmarkadebayo/mindly";
 const HEARD = "um so today was busy… I finished the slides for Thursday, went to the gym, and uh I still need to call my mum tomorrow";
 
 const still = () => typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -79,7 +78,7 @@ export default function Welcome() {
 
       <footer className="ld-foot">
         <nav aria-label="About"><Link href="/privacy/">Privacy</Link><Link href="/terms/">Terms</Link><Link href="/support/">Need support?</Link></nav>
-        <p>Built on open models (Whisper and Gemma). <a href={REPO} target="_blank" rel="noopener noreferrer">Open source on GitHub</a>. © 2026 Mindly</p>
+        <p>Built on open models (Whisper and Gemma). © 2026 Mindly</p>
       </footer>
     </main>
   );
