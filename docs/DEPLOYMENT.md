@@ -21,6 +21,27 @@ The live app (https://mindly-ai.duckdns.org) runs on **one AWS EC2 instance** (t
 
 We chose a single VM because the accounts database is SQLite on a disk and the app needs HTTPS for the microphone. It also stays well within AWS credits. App Runner and similar managed services aren't available in every Region.
 
+## Uptime alerts
+
+Two checks watch the live site:
+
+- **Every 5 minutes, on AWS** (eu-north-1, all within the free allowances). An EventBridge rule `mindly-uptime-every-5-min` runs
+  the Lambda function `mindly-uptime` ([deploy/uptime.py](../deploy/uptime.py)), which loads `/api/health` and fails if the
+  site is down or the AI key is missing. Two CloudWatch alarms email the SNS topic `mindly-uptime`: `mindly-site-down` (two
+  failed checks in a row; it emails again on recovery) and `mindly-uptime-check-not-running` (the check itself stopped for 15
+  minutes). The function's role `mindly-uptime-lambda` may only write its logs, which are kept 7 days.
+- **Daily, on GitHub** ([.github/workflows/uptime.yml](../.github/workflows/uptime.yml)): the same health check plus the
+  HTTPS certificate's expiry, which the AWS check doesn't look at.
+
+Route 53 health checks would be quicker, but their alarms and email topic must live in us-east-1, which the project's
+service control policy doesn't allow for SNS. To change who gets the emails, subscribe another address to the topic and
+confirm it from the email AWS sends. To update the check after editing `deploy/uptime.py`:
+
+```bash
+cd deploy && zip -q /tmp/uptime.zip uptime.py && AWS_PROFILE=mindly AWS_REGION=eu-north-1 \
+  aws lambda update-function-code --function-name mindly-uptime --zip-file fileb:///tmp/uptime.zip
+```
+
 ## Run the container
 
 ```bash

@@ -2,7 +2,7 @@ name: Uptime
 
 # A full daily check of the live site: reachable over HTTPS, API keys set, certificate not about to expire. If a check
 # fails, the run fails and GitHub emails the person who last edited this schedule. Once a day keeps a private repo well
-# inside the free Actions minutes.
+# inside the free Actions minutes; the 5-minute "is it up" check runs on AWS (docs/DEPLOYMENT.md, Uptime alerts).
 on:
   schedule:
     - cron: "0 7 * * *"   # 08:00 in Lagos
