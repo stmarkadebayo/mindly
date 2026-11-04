@@ -103,33 +103,18 @@ def test_a_hint_echoed_back_is_not_speech(monkeypatch, audio):
     assert asr.transcribe(audio)["text"] == ""
 
 
-def test_alternative_engine_uses_its_own_endpoint_and_sends_no_whisper_hint(monkeypatch, audio):
-    seen = {}
-
-    def handler(request):
-        seen["url"], seen["auth"], seen["body"] = str(request.url), request.headers["authorization"], request.content
-        return httpx.Response(200, json={"text": "How you dey", "language": "pcm"})
-
-    monkeypatch.setattr(config, "ASR_ALT_STYLE", "openai")  # whatever the local .env says
-    monkeypatch.setattr(config, "ASR_ALT_BASE_URL", "http://alt.test/v1")
-    monkeypatch.setattr(config, "ASR_ALT_API_KEY", "altkey")
-    monkeypatch.setattr(asr, "_client", httpx.Client(transport=httpx.MockTransport(handler)))
-    assert asr.transcribe(audio, alt=True)["text"] == "How you dey"
-    assert seen["url"] == "http://alt.test/v1/audio/transcriptions" and seen["auth"] == "Bearer altkey"
-    assert b"NaijaVox-2.0" in seen["body"] and b'name="prompt"' not in seen["body"]
+def test_hard_to_hear_passages_are_marked_in_normal_mode_too(monkeypatch, audio):
+    segs = [{"text": " I met Tunde today.", "no_speech_prob": 0.01, "avg_logprob": -0.3},
+            {"text": " His cousin is called Ayodele.", "no_speech_prob": 0.05, "avg_logprob": -1.15}]
+    fake_endpoint(monkeypatch, lambda r: httpx.Response(200, json={"language": "english", "segments": segs}))
+    out = asr.transcribe(audio)
+    assert out["text"] == "I met Tunde today. His cousin is called Ayodele."   # the plain text is untouched
+    assert out["uncertain"] is True
+    assert out["marked"] == "I met Tunde today. ⟦His cousin is called Ayodele.⟧"
 
 
-def test_storm_engine_posts_to_transcribe_with_its_key_and_a_language(monkeypatch, audio):
-    seen = {}
-
-    def handler(request):
-        seen["url"], seen["key"], seen["body"] = str(request.url), request.headers["x-api-key"], request.content
-        return httpx.Response(200, json={"text": " you don tok am "})
-
-    monkeypatch.setattr(config, "ASR_ALT_STYLE", "storm")
-    monkeypatch.setattr(config, "ASR_ALT_BASE_URL", "http://storm.test")
-    monkeypatch.setattr(config, "ASR_ALT_API_KEY", "k")
-    monkeypatch.setattr(asr, "_client", httpx.Client(transport=httpx.MockTransport(handler)))
-    assert asr.transcribe(audio, language="pcm", alt=True) == {"text": "you don tok am", "language": "pcm"}
-    assert seen["url"] == "http://storm.test/transcribe" and seen["key"] == "k"
-    assert asr.transcribe(audio, language="fr", alt=True)["language"] == "en"  # unsupported: the configured default
+def test_clear_speech_has_no_marks(monkeypatch, audio):
+    segs = [{"text": " All good here.", "no_speech_prob": 0.01, "avg_logprob": -0.2}]
+    fake_endpoint(monkeypatch, lambda r: httpx.Response(200, json={"language": "english", "segments": segs}))
+    out = asr.transcribe(audio)
+    assert "marked" not in out and "uncertain" not in out

@@ -34,6 +34,19 @@ NO_SPEECH_CUTOFF = 0.6  # hosted Whisper reports how likely each segment is sile
 ROOM_MIN_CONFIDENCE = -2.2
 ROOM_NO_SPEECH_CUTOFF = 0.9
 UNSURE_BELOW = -1.0  # a kept segment scoring under this is reported as uncertain
+SHAKY_OPEN, SHAKY_CLOSE = "\u27e6", "\u27e7"  # wrap a passage in these when it was hard to hear; the writer carries them into the page
+
+
+def _mark(kept: list[dict]) -> tuple[str, bool]:
+    """The text of the kept segments, with the shaky ones wrapped in marks, and whether any were shaky."""
+    parts, shaky = [], False
+    for s in kept:
+        text = s["text"].strip()
+        if s.get("avg_logprob", 0) < UNSURE_BELOW:
+            shaky = True
+            text = f"{SHAKY_OPEN}{text}{SHAKY_CLOSE}"
+        parts.append(text)
+    return " ".join(parts).strip(), shaky
 
 # One client for the life of the process, so connections to the speech service are reused (no handshake per note).
 _client = httpx.Client(timeout=httpx.Timeout(60, connect=10))
@@ -51,22 +64,12 @@ RETRY_STATUS = {408, 425, 429, 500, 502, 503, 504}
 BACKOFF = (0.4, 1.2)  # seconds to wait before the second and third attempt
 
 
-def alt_configured() -> bool:
-    return bool(config.ASR_ALT_BASE_URL)
-
-
-def transcribe(path: Path, language: str | None = None, room: bool = False, alt: bool = False) -> dict:
-    """`alt` uses the second engine (config.ASR_ALT_*) so two speech models can be compared on the same speech."""
-    if alt:
-        return _storm(path, language) if config.ASR_ALT_STYLE == "storm" else _remote(path, language, room, alt=True)
+def transcribe(path: Path, language: str | None = None, room: bool = False) -> dict:
     return _remote(path, language, room) if config.ASR_API_KEY else _local(path, language)
 
 
-def _remote_once(path: Path, language: str | None, model: str, room: bool = False, alt: bool = False) -> dict:
-    base, key = (config.ASR_ALT_BASE_URL, config.ASR_ALT_API_KEY) if alt else (config.ASR_BASE_URL, config.ASR_API_KEY)
-    data = {"model": model, "response_format": "verbose_json", "temperature": "0"}
-    if not alt:
-        data["prompt"] = CONTEXT_PROMPT  # a Whisper-specific nudge; the alternative engine gets the audio alone
+def _remote_once(path: Path, language: str | None, model: str, room: bool = False) -> dict:
+    data = {"model": model, "response_format": "verbose_json", "temperature": "0", "prompt": CONTEXT_PROMPT}
     if language:
         data["language"] = language
     audio = path.read_bytes()
@@ -74,8 +77,8 @@ def _remote_once(path: Path, language: str | None, model: str, room: bool = Fals
     for attempt in range(len(BACKOFF) + 1):
         try:
             resp = _client.post(
-                f"{base}/audio/transcriptions",
-                headers={"Authorization": f"Bearer {key}"},
+                f"{config.ASR_BASE_URL}/audio/transcriptions",
+                headers={"Authorization": f"Bearer {config.ASR_API_KEY}"},
                 data=data,
                 files={"file": (path.name, audio, MIME.get(path.suffix.lstrip("."), "application/octet-stream"))},
             )
@@ -85,11 +88,11 @@ def _remote_once(path: Path, language: str | None, model: str, room: bool = Fals
             if resp.status_code == 200:
                 body = resp.json()
                 segments = body.get("segments")
-                uncertain = False
+                uncertain, marked = False, ""
                 if segments:
                     min_conf, cutoff = (ROOM_MIN_CONFIDENCE, ROOM_NO_SPEECH_CUTOFF) if room else (MIN_CONFIDENCE, NO_SPEECH_CUTOFF)
                     kept = [s for s in segments if s.get("no_speech_prob", 0) < cutoff and s.get("avg_logprob", 0) > min_conf]
-                    uncertain = room and any(s.get("avg_logprob", 0) < UNSURE_BELOW for s in kept)
+                    marked, uncertain = _mark(kept)
                     text = " ".join(s["text"].strip() for s in kept).strip()
                 else:
                     text = (body.get("text") or "").strip()
@@ -98,8 +101,9 @@ def _remote_once(path: Path, language: str | None, model: str, room: bool = Fals
                 result = {"text": text, "language": body.get("language")}
                 if body.get("duration"):
                     result["duration"] = body["duration"]
-                if uncertain:
+                if uncertain and text:
                     result["uncertain"] = True
+                    result["marked"] = marked
                 return result
             err = ASRError(f"The speech service returned an error ({resp.status_code}).", retryable=resp.status_code in RETRY_STATUS)
         if not err.retryable:
@@ -109,28 +113,8 @@ def _remote_once(path: Path, language: str | None, model: str, room: bool = Fals
     raise err
 
 
-STORM_LANGUAGES = {"en", "yo", "ha", "ig", "pcm"}
-
-
-def _storm(path: Path, language: str | None) -> dict:
-    """STORM-OS ASR: one multipart POST. It must be told the language, so use the person's choice or the configured default."""
-    lang = language if language in STORM_LANGUAGES else config.ASR_ALT_LANGUAGE
-    try:
-        resp = _client.post(f"{config.ASR_ALT_BASE_URL}/transcribe", headers={"x-api-key": config.ASR_ALT_API_KEY},
-                            data={"language": lang}, files={"file": (path.name, path.read_bytes(), MIME.get(path.suffix.lstrip("."), "application/octet-stream"))})
-    except httpx.HTTPError:
-        raise ASRError("Couldn't reach the speech service.", retryable=True)
-    if resp.status_code != 200:
-        raise ASRError(f"The speech service returned an error ({resp.status_code}).", retryable=resp.status_code in RETRY_STATUS)
-    body = resp.json()
-    text = str(body.get("text") or body.get("transcript") or body.get("transcription") or "").strip()
-    return {"text": text, "language": lang}
-
-
-def _remote(path: Path, language: str | None, room: bool = False, alt: bool = False) -> dict:
+def _remote(path: Path, language: str | None, room: bool = False) -> dict:
     """Hosted speech. Transient failures are retried; if the main model keeps failing, the fallback model is tried."""
-    if alt:
-        return _remote_once(path, language, config.ASR_ALT_MODEL, room, alt=True)
     models = [config.ASR_MODEL] + ([config.ASR_FALLBACK_MODEL] if config.ASR_FALLBACK_MODEL and config.ASR_FALLBACK_MODEL != config.ASR_MODEL else [])
     err = ASRError("The speech service failed.")
     for model in models:
@@ -152,7 +136,12 @@ def _local(path: Path, language: str | None) -> dict:
     # vad_filter drops silence, so an empty or silent recording yields no text instead of hallucinations.
     segments, info = _model().transcribe(str(path), language=language, vad_filter=True, beam_size=5,
                                        initial_prompt=CONTEXT_PROMPT, condition_on_previous_text=False)
-    text = " ".join(s.text.strip() for s in segments).strip()
+    heard = [{"text": s.text, "avg_logprob": s.avg_logprob} for s in segments]
+    text = " ".join(s["text"].strip() for s in heard).strip()
     if _echoes_prompt(text):
         text = ""
-    return {"text": text, "language": info.language, "duration": info.duration}
+    result = {"text": text, "language": info.language, "duration": info.duration}
+    marked, shaky = _mark(heard)
+    if shaky and text:
+        result["uncertain"], result["marked"] = True, marked
+    return result
