@@ -1,14 +1,12 @@
 "use client";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { EntryList, matches } from "@/components/EntryList";
-import { SampleOffer } from "@/components/SampleOffer";
-import { EngineToggle } from "@/components/EngineToggle";
 import { DueReminders } from "@/components/Suggestions";
-import { StreakPill } from "@/components/Habit";
+import { AppHeader } from "@/components/AppHeader";
+import { FirstWeek } from "@/components/FirstWeek";
 import { TrialCard } from "@/components/TrialCard";
-import { Mark, Underline } from "@/components/Hand";
+import { Underline } from "@/components/Hand";
 import { Icon } from "@/components/Icon";
 import { useMe } from "@/components/Session";
 import { VoiceDock, type VoiceHandle } from "@/components/VoiceDock";
@@ -32,6 +30,9 @@ export default function Home() {
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [zoneTop, setZoneTop] = useState<number | null>(null);
   const [q, setQ] = useState("");
+  const [searching, setSearching] = useState(false);
+  const box = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (searching) box.current?.focus(); }, [searching]);
   const [live, setLive] = useState(false);
   const prompts = useMemo(() => timePrompts(me.profile), [me.profile]);
   const first = me.name?.split(" ")[0];
@@ -73,13 +74,7 @@ export default function Home() {
   return (
     <main ref={mainRef} className={`screen home${live ? " live" : ""}`} style={ready ? undefined : { visibility: "hidden" }}>
       <div className="recede stage-top">
-        <header className="home-head">
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}><Mark size={28} /><StreakPill /></div>
-          <EngineToggle />
-          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-            <Link className="avatar" href="/settings/" aria-label="Settings">{(me.name || me.email)[0].toUpperCase()}</Link>
-          </div>
-        </header>
+        <AppHeader className="home-head" />
 
         <TrialCard />
 
@@ -94,7 +89,6 @@ export default function Home() {
 
           <div className="stage-below">
             <p className="tap">Tap to talk</p>
-            <p className="stage-or">or begin with a prompt</p>
             <div className="chips" ref={chipsRef}>
               {prompts.map((p) => <button key={p} className="chip small" onClick={() => voice.current?.start({ prompt: p })}>{p}</button>)}
             </div>
@@ -103,12 +97,13 @@ export default function Home() {
       </div>
 
       <div className="entries-zone recede" style={{ top: zoneTop ?? undefined }} role="region" aria-label="Your entries">
-        {real.length === 0 && <><p className="empty-note">Your entries will gather here.</p><SampleOffer /></>}
-        {real.length >= SEARCH_FROM && (
-          <div className="search"><Icon name="search" /><input className="input" type="search" placeholder="Search your journal" aria-label="Search your journal" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-        )}
+        <FirstWeek entries={entries ?? []} />
+        {real.length === 0 && <><p className="empty-note">Your entries will gather here.</p></>}
+        {searching && <div className="search"><Icon name="search" /><input ref={box} className="input" type="search" placeholder="Search your words" aria-label="Search your journal" value={q} onChange={(e) => setQ(e.target.value)} /></div>}
         {real.length > 0 && shown.length === 0 && <p className="empty-note">Nothing matches &ldquo;{q}&rdquo;.</p>}
-        <EntryList entries={shown} />
+        <EntryList entries={shown} headRight={real.length >= SEARCH_FROM && (
+          <button className="icon-btn" aria-label={searching ? "Close search" : "Search your journal"} onClick={() => { setSearching((v) => !v); if (searching) setQ(""); }}><Icon name={searching ? "close" : "search"} /></button>
+        )} />
       </div>
 
       {!live && <DueReminders />}

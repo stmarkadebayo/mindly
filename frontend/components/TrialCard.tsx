@@ -1,34 +1,41 @@
 "use client";
-// A small card under the top bar about the plan. Dismissed for the day; it comes back when the trial is nearly over.
+// A small card under the top bar about the plan. It appears once a day and clears itself after a few seconds.
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { daysLeft } from "@/lib/plan";
+import { usePricing } from "@/lib/pricing";
 import { useSession } from "./Session";
 
 const KEY = "mindly.tip.plan";
+const SHOW_MS = 5000;
 
 export function TrialCard() {
   const { me, config } = useSession();
-  const [hidden, setHidden] = useState(true);
-  const left = daysLeft(me?.trial_ends ?? null);
-  // Everyone gets a fresh nudge once the trial is in its last week, and each day after it ends.
-  const stamp = me?.on_trial ? (left > 7 ? "trial" : `last-${left}`) : `free-${new Date().toDateString()}`;
+  const pricing = usePricing(config.prices);
+  const [shown, setShown] = useState(false);
+  // A short reminder, not a fixture: it appears once a day when Today opens and clears itself after a few seconds.
   useEffect(() => {
-    try { setHidden(localStorage.getItem(KEY) === stamp); } catch { setHidden(false); }
-  }, [stamp]);
-  if (!me || me.paid || hidden) return null;
+    if (!me || me.paid) return;
+    const today = new Date().toDateString();
+    try { if (localStorage.getItem(KEY) === today) return; localStorage.setItem(KEY, today); } catch { /* show it anyway */ }
+    setShown(true);
+    const t = setTimeout(() => setShown(false), SHOW_MS);
+    return () => clearTimeout(t);
+  }, [me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!me || me.paid || !shown) return null;
 
-  const price = config.pro_price || "$7/month";
-  const dismiss = () => { try { localStorage.setItem(KEY, stamp); } catch { /* ignore */ } setHidden(true); };
+  const left = daysLeft(me.trial_ends);
+  const price = pricing.label;
   return (
     <aside className="tip glass" aria-label="Your plan">
+      <span className="tip-timer" aria-hidden style={{ animationDuration: `${SHOW_MS}ms` }} />
       <div className="tip-text">
         {me.on_trial
-          ? <><b>{left} {left === 1 ? "day" : "days"} of Pro left</b><span>{price} after. Keep unlimited speech.</span></>
+          ? <><b>{left} {left === 1 ? "day" : "days"} of Pro left</b><span>{price ? `${price} after. ` : ""}Keep unlimited speech.</span></>
           : <><b>You&apos;re on the free plan</b><span>{config.free_minutes ?? 10} minutes of speech a day. Pro is unlimited.</span></>}
       </div>
       <Link className="btn btn-primary tip-btn" href="/settings/#plan">Plans</Link>
-      <button className="icon-btn tip-x" aria-label="Dismiss" onClick={dismiss}>×</button>
+      <button className="icon-btn tip-x" aria-label="Dismiss" onClick={() => setShown(false)}>×</button>
     </aside>
   );
 }

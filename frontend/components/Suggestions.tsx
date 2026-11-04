@@ -2,6 +2,7 @@
 // Things the person said they'd do. They are offered on the entry page, where the words are, and only added when they accept.
 // Accepted reminders come back as a small card on Home once they are due.
 import { useCallback, useEffect, useState } from "react";
+import { openReminders } from "@/lib/actions";
 import * as store from "@/lib/store";
 import type { Entry, Suggestion } from "@/lib/types";
 
@@ -12,15 +13,21 @@ export const when = (iso: string) =>
 export const taskLine = (s: Suggestion) => `☐ ${s.text}${s.when ? ` (${when(s.when)})` : ""}`;
 
 /** On the entry page: each pending suggestion with its buttons. `onAccept` adds the line to the page; the parent owns the text. */
-export function EntrySuggestions({ entry, onAccept, onChange }: {
-  entry: Entry; onAccept: (s: Suggestion) => void; onChange: (e: Entry) => void;
+export function EntrySuggestions({ entry, body, onAccept, onTick, onChange }: {
+  entry: Entry; body: string; onAccept: (s: Suggestion) => void; onTick: (s: Suggestion) => void; onChange: (e: Entry) => void;
 }) {
   const pending = (entry.suggestions ?? []).filter((s) => s.status === "pending");
   const set = async (s: Suggestion, status: Suggestion["status"]) => {
     const e = await store.updateEntry(entry.id, (x) => { const t = x.suggestions?.find((y) => y.id === s.id); if (t) t.status = status; });
     if (e) onChange(e);
   };
-  return <>{pending.map((s) => (
+  const open = openReminders(entry, body);
+  return <>{open.map((s) => (
+    <div key={s.id} className="todo-row">
+      <button className="todo-tick" aria-label={`Mark done: ${s.text}`} onClick={() => onTick(s)} />
+      <span className="grow"><b>{s.text}</b>{s.when && <span className={`when${new Date(s.when).getTime() <= Date.now() ? " late" : ""}`}>{when(s.when)}</span>}</span>
+    </div>
+  ))}{pending.map((s) => (
     <div key={s.id} className="suggest-inline glass" role="status">
       <p className="suggest-text">
         {s.kind === "reminder" && s.when ? <>You mentioned <b>{s.text}</b> for {when(s.when)}. Remind you?</> : <>You mentioned <b>{s.text}</b>. Add it to your checklist?</>}
@@ -38,8 +45,8 @@ export function DueReminders() {
   const [due, setDue] = useState<{ entry: Entry; s: Suggestion } | null>(null);
   const load = useCallback(() => store.entries().then((all) => {
     const now = Date.now();
-    for (const entry of all) for (const s of entry.suggestions ?? []) {
-      if (s.status === "accepted" && s.kind === "reminder" && s.when && new Date(s.when).getTime() <= now) return setDue({ entry, s });
+    for (const entry of all) for (const s of openReminders(entry)) {   // still open in the text, so a tick in the entry clears it here too
+      if (s.when && new Date(s.when).getTime() <= now) return setDue({ entry, s });
     }
     setDue(null);
   }), []);
