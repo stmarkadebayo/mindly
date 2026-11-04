@@ -111,7 +111,7 @@ function EntryScreen() {
       const d = (ev as CustomEvent<pipeline.EntryEvent>).detail;
       if (d.entryId !== id) return;
       if (d.support) setSupport(true);
-      if (d.uncertain) toast("Some of that was hard to hear. Give it a quick read-through.");
+      if (d.uncertain) toast("A few words were hard to hear. They're highlighted; tap one to check it.");
       store.entry(id).then((e) => e && setEntry(e));
     };
     window.addEventListener("mindly:entry", onEntry);
@@ -194,13 +194,14 @@ function EntryScreen() {
             </p>
           )}
           <input className="entry-title" placeholder="Untitled" aria-label="Title" value={title} onChange={(e) => edit({ title: e.target.value })} onBlur={save} />
+          <EntrySuggestions entry={entry} body={body} onChange={setEntry}
+            onAccept={(s) => { const b = latest.current.body; edit({ body: b.trim() ? `${b.trimEnd()}\n\n${taskLine(s)}` : taskLine(s) }); save(); }}
+            onTick={(s) => { edit({ body: latest.current.body.split("\n").map((l) => (l.startsWith(`☐ ${s.text}`) ? l.replace("☐", "☑") : l)).join("\n") }); save(); }} />
           <BodyEditor ref={bodyRef} value={body} onChange={(v) => edit({ body: v })} onBlur={save} urls={urls} onOpenImage={openImage}
             className={`entry-body${inked ? (inked % 2 ? " inked" : " inked-again") : ""}`} placeholder={blank ? "Type here, or tap the orb to talk" : "Keep writing…"} />
 
           {visible.map((s) => <SegmentStatus key={s.id} seg={s} onRetry={() => pipeline.process(id, s.id)} onDismiss={() => dismiss(s.id)} />)}
           {support && <SupportCard />}
-          <EntrySuggestions entry={entry} onChange={setEntry}
-            onAccept={(s) => { const b = latest.current.body; edit({ body: b.trim() ? `${b.trimEnd()}\n\n${taskLine(s)}` : taskLine(s) }); save(); }} />
           {(entry.completions ?? []).filter((c) => Date.now() - new Date(c.at).getTime() < 864e5).map((c) => (
             <div key={c.id} className="suggest-undo">
               <span>✓ Ticked off <b>{c.text}</b></span>
@@ -246,7 +247,8 @@ function Busy({ text }: { text: string }) {
 
 function SegmentStatus({ seg, onRetry, onDismiss }: { seg: Segment; onRetry: () => void; onDismiss: () => void }) {
   if (seg.status === "saved" || seg.status === "transcribing") return <Busy text="Listening back to your recording…" />;
-  if (seg.status === "writing") return <Busy text="Turning your words into a page…" />;
+  // What was heard shows straight away, faded, so words are on the page before the tidy version arrives.
+  if (seg.status === "writing") return <>{seg.transcript && <p className="heard">{seg.transcript}</p>}<Busy text="Turning your words into a page…" /></>;
   if (seg.status === "queued")
     return <div className="status"><span className="grow">You&apos;re offline. Your recording is saved here and will be written up when you&apos;re back online.</span></div>;
   if (seg.status === "no_speech")

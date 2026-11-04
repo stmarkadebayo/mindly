@@ -2,6 +2,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { type Part, imgToken, join, parse } from "@/lib/text";
 import type { ListKind } from "@/components/NoteTools";
+import { useUI } from "@/components/UI";
 
 export type StyleKind = "bold" | "italic" | "heading";
 export interface BodyHandle { style(kind: StyleKind): void; list(kind: ListKind): void; insertImage(id: string): void; insertText(text: string): void }
@@ -17,8 +18,9 @@ const numbered = /^(\d+)\. /;
 /** Light formatting kept as plain text: # heading, ## subheading, **bold**, _italic_. Shown styled when you're not editing it. */
 function styled(text: string) {
   const inline = (line: string, key: number) =>
-    line.split(/(\*\*[^*\n]+\*\*|_[^_\n]+_)/g).map((t, i) =>
-      t.startsWith("**") && t.endsWith("**") && t.length > 4 ? <strong key={`${key}-${i}`}>{t.slice(2, -2)}</strong>
+    line.split(/(\*\*[^*\n]+\*\*|_[^_\n]+_|\u27e6[^\u27e6\u27e7\n]+\u27e7)/g).map((t, i) =>
+      t.startsWith("\u27e6") && t.endsWith("\u27e7") ? <mark key={`${key}-${i}`} className="shaky" title="Hard to hear. Tap to check.">{t.slice(1, -1)}</mark>
+      : t.startsWith("**") && t.endsWith("**") && t.length > 4 ? <strong key={`${key}-${i}`}>{t.slice(2, -2)}</strong>
       : t.startsWith("_") && t.endsWith("_") && t.length > 2 ? <em key={`${key}-${i}`}>{t.slice(1, -1)}</em> : t);
   return text.split("\n").map((line, i) => {
     const h = /^(#{1,2}) (.*)$/.exec(line);
@@ -27,15 +29,45 @@ function styled(text: string) {
   });
 }
 
+/** Where in the raw text a tap on the styled view landed, so the cursor opens right there and not at the end. */
+function caretFromTap(e: React.MouseEvent, text: string): number {
+  const doc = document as Document & { caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null };
+  let node: Node | null = null, off = 0;
+  if (doc.caretPositionFromPoint) { const c = doc.caretPositionFromPoint(e.clientX, e.clientY); node = c?.offsetNode ?? null; off = c?.offset ?? 0; }
+  else if (document.caretRangeFromPoint) { const r = document.caretRangeFromPoint(e.clientX, e.clientY); node = r?.startContainer ?? null; off = r?.startOffset ?? 0; }
+  const lineEl = (node instanceof Element ? node : node?.parentElement)?.closest(".md-line, .md-h1, .md-h2") as HTMLElement | null;
+  if (!lineEl?.parentElement) return text.length;
+  const lines = text.split("\n"), idx = Array.from(lineEl.parentElement.children).indexOf(lineEl);
+  const lineStart = lines.slice(0, idx).reduce((n, l) => n + l.length + 1, 0);
+  const line = lines[idx] ?? "";
+  // Characters shown before the tap, then walked back to the raw text, skipping the ** and _ marks that aren't shown.
+  let shown = 0;
+  if (node?.nodeType === Node.TEXT_NODE) {
+    const w = document.createTreeWalker(lineEl, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) { if (n === node) { shown += off; break; } shown += n.textContent!.length; }
+  } else shown = line.length;
+  const head = /^#{1,2} /.exec(line)?.[0].length ?? 0;
+  let seen = 0, raw = head;
+  for (const part of line.slice(head).split(/(\*\*[^*\n]+\*\*|_[^_\n]+_|\u27e6[^\u27e6\u27e7\n]+\u27e7)/g)) {
+    const bold = part.startsWith("**") && part.endsWith("**") && part.length > 4, ital = !bold && part.startsWith("_") && part.endsWith("_") && part.length > 2;
+    const shaky = part.startsWith("\u27e6") && part.endsWith("\u27e7");
+    const mark = bold ? 2 : ital || shaky ? 1 : 0, len = part.length - mark * 2;
+    if (shown <= seen + len) return lineStart + Math.min(raw + mark + shown - seen, line.length);
+    seen += len; raw += part.length;
+  }
+  return lineStart + line.length;
+}
+
 /** The entry text: runs of text with photos between them. Text keeps flowing under a photo. */
 export const BodyEditor = forwardRef<BodyHandle, {
   value: string; onChange: (v: string) => void; onBlur: () => void; className: string; placeholder: string;
   urls: Record<string, string>; onOpenImage: (id: string) => void;
 }>(function BodyEditor({ value, onChange, onBlur, className, placeholder, urls, onOpenImage }, ref) {
+  const { sheet } = useUI();
   const parts = parse(value);
   const areas = useRef<(HTMLTextAreaElement | null)[]>([]);
   const last = useRef(0);          // the text run the cursor was last in
-  const caretAt = useRef<{ i: number; pos: number } | null>(null);
+  const caretAt = useRef<{ i: number; pos: number; end?: number } | null>(null);
   const [active, setActive] = useState<number | null>(null);   // the text run being edited; the rest show styled
   const pending = useRef<(() => void) | null>(null);           // a tool tapped before any text was being edited
 
@@ -44,7 +76,7 @@ export const BodyEditor = forwardRef<BodyHandle, {
   useLayoutEffect(() => {
     areas.current.forEach((el) => { if (el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; } });
     const c = caretAt.current;
-    if (c) { caretAt.current = null; const el = areas.current[c.i]; if (el) { el.focus(); el.setSelectionRange(c.pos, c.pos); } }
+    if (c) { caretAt.current = null; const el = areas.current[c.i]; if (el) { el.focus(); el.setSelectionRange(c.pos, c.end ?? c.pos); } }
     const again = pending.current;   // the first tap only opened the text for editing; now do what was asked
     if (again && areas.current.some(Boolean)) { pending.current = null; again(); }
   });
@@ -152,6 +184,12 @@ export const BodyEditor = forwardRef<BodyHandle, {
       onChange(join([...parts.slice(0, i - 1), { text: (parts[i - 2] as { text: string }).text + "\n" + text }, ...parts.slice(i + 1)]).replace(imgToken(id), ""));
       return;
     }
+    if (e.key === "Backspace" && caret === el.selectionEnd && caret > 0) {
+      // Backspace right after a list mark turns the line back into plain text, instead of leaving a stray "•".
+      const { start } = lineAt(text, caret), line = text.slice(start, lineAt(text, caret).end);
+      const m = numbered.exec(line)?.[0] ?? MARKS.find((x) => line.startsWith(x));
+      if (m && caret === start + m.length) { e.preventDefault(); caretAt.current = { i, pos: start }; setText(i, text.slice(0, start) + text.slice(start + m.length)); return; }
+    }
     if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing || caret !== el.selectionEnd) return;
     const { start, end } = lineAt(text, caret);
     const line = text.slice(start, end);
@@ -167,6 +205,24 @@ export const BodyEditor = forwardRef<BodyHandle, {
       caretAt.current = { i, pos: caret + add.length };
       setText(i, text.slice(0, caret) + add + text.slice(caret));
     }
+  };
+  // A tap on a hard-to-hear passage asks whether it is right, instead of just opening the editor.
+  const checkShaky = (passage: string, i: number) => {
+    const token = `\u27e6${passage}\u27e7`, text = (parts[i] as { text: string }).text, at = text.indexOf(token);
+    if (at < 0) return false;
+    const drop = () => setText(i, text.replace(token, passage));
+    sheet((close) => (
+      <>
+        <h2>Is this right?</h2>
+        <p className="subhead">This part was hard to hear, so Mindly isn&apos;t sure it caught it correctly.</p>
+        <p className="shaky-quote">“{passage}”</p>
+        <div className="alert-actions">
+          <button className="primary" onClick={() => { drop(); close(); }}>Looks right</button>
+          <button className="quiet" onClick={() => { drop(); caretAt.current = { i, pos: at, end: at + passage.length }; setActive(i); close(); }}>Fix it</button>
+        </div>
+      </>
+    ), undefined, "alert");
+    return true;
   };
   const tap = (e: React.MouseEvent<HTMLTextAreaElement>, i: number) => {
     const el = e.currentTarget, text = el.value, pos = el.selectionStart;
@@ -191,8 +247,8 @@ export const BodyEditor = forwardRef<BodyHandle, {
           onBlur={() => { setActive(null); onBlur(); }} />
       ) : (
         <div key={`t${i}`} className={`${className} md`} role="textbox" tabIndex={0} aria-label="Entry text"
-          onClick={() => { caretAt.current = { i, pos: p.text.length }; setActive(i); }}
-          onFocus={() => { caretAt.current = { i, pos: p.text.length }; setActive(i); }}>{styled(p.text)}</div>
+          onMouseDown={(e) => { e.preventDefault(); const hit = (e.target as HTMLElement).closest(".shaky"); if (hit && checkShaky(hit.textContent ?? "", i)) return; const pos = caretFromTap(e, p.text); caretAt.current = { i, pos: Math.min(pos, p.text.length) }; setActive(i); }}
+          onFocus={() => { caretAt.current ??= { i, pos: p.text.length }; setActive(i); }}>{styled(p.text)}</div>
       ))
       )}
     </>
