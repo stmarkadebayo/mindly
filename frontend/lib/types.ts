@@ -13,10 +13,10 @@ export interface Segment {
   dismissed?: boolean;
   /** Recorded in room mode, so the server keeps shakier speech instead of dropping it. */
   room?: boolean;
-  /** Which speech engine heard it; "alt" is the alternative engine (NaijaVox). */
-  engine?: "alt";
   /** Some of this text was hard to hear; worth a read-through. */
   uncertain?: boolean;
+  /** The transcript with hard-to-hear passages wrapped in ⟦ ⟧, so the writer can carry them into the page. */
+  marked?: string;
 }
 
 /** Something the person said they'd do. Offered once as a prompt; nothing is created until they accept. */
@@ -63,7 +63,6 @@ export interface Chat {
 export interface Profile {
   goals?: string[];
   languages?: string[];
-  speechLanguage?: string;
   onboarded?: boolean;
   consentedAt?: string;
 }

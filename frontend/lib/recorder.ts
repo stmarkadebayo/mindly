@@ -23,6 +23,7 @@ export class Recorder {
 
   private ctx: AudioContext | null = null;
   private level: AnalyserNode | null = null;
+  private wave = new Uint8Array(1024);   // reused on every check rather than allocated four times a second
   private loud = 0; // loudest moment so far, 0 to 1
   private warned = false;
 
@@ -78,10 +79,9 @@ export class Recorder {
   /** After a few seconds of recording, warn once if the microphone has heard almost nothing. */
   private checkLevel(seconds: number) {
     if (!this.level || this.state !== "recording") return;
-    const data = new Uint8Array(this.level.fftSize);
-    this.level.getByteTimeDomainData(data);
+    this.level.getByteTimeDomainData(this.wave);
     let peak = 0;
-    for (const v of data) peak = Math.max(peak, Math.abs(v - 128) / 128);
+    for (const v of this.wave) peak = Math.max(peak, Math.abs(v - 128) / 128);
     this.loud = Math.max(this.loud, peak);
     if (seconds >= 6 && !this.warned && this.loud < 0.04) {
       this.warned = true;

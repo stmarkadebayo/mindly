@@ -12,6 +12,7 @@ function req<T>(r: IDBRequest<T>): Promise<T> {
 
 export async function open(userId: string) {
   db?.close();
+  list = null;
   const r = indexedDB.open(`mindly-${userId}`, 2);
   r.onupgradeneeded = () => {
     const d = r.result;
@@ -28,6 +29,7 @@ export async function open(userId: string) {
 export function close() {
   db?.close();
   db = null;
+  list = null;
 }
 
 export const isOpen = () => db !== null;
@@ -42,17 +44,26 @@ export const uid = () => crypto.randomUUID();
 export const now = () => new Date().toISOString();
 
 // --- entries ---------------------------------------------------------------
+// Many screens react to the same change at once, so the sorted list is read once and shared until the next write.
+// Every write to entries goes through this file and clears it, so it can't go stale. Treat the result as read-only.
+let list: Promise<Entry[]> | null = null;
+const changed = () => { list = null; };
+
 export async function entries(): Promise<Entry[]> {
-  const all = await req<Entry[]>(tx("entries").getAll());
-  return all.sort((a, b) => b.created.localeCompare(a.created));
+  if (!list) {
+    const read = req<Entry[]>(tx("entries").getAll()).then((all) => all.sort((a, b) => b.created.localeCompare(a.created)));
+    list = read;
+    read.catch(() => { if (list === read) list = null; });
+  }
+  return list;
 }
 /** Write several entries in one transaction (used for the example journal). */
-export function putEntries(list: Entry[]): Promise<void> {
+export function putEntries(rows: Entry[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const t = need().transaction("entries", "readwrite");
     const s = t.objectStore("entries");
-    list.forEach((e) => s.put(e));
-    t.oncomplete = () => resolve();
+    rows.forEach((e) => s.put(e));
+    t.oncomplete = () => { changed(); resolve(); };
     t.onerror = () => reject(t.error);
   });
 }
@@ -61,6 +72,7 @@ export const entry = (id: string) => req<Entry | undefined>(tx("entries").get(id
 export async function newEntry(prompt: string | null = null): Promise<Entry> {
   const e: Entry = { id: uid(), created: now(), updated: now(), title: "", body: "", prompt, mood: null, segments: [] };
   await req(tx("entries", "readwrite").put(e));
+  changed();
   return e;
 }
 
@@ -82,7 +94,7 @@ export function updateEntry(id: string, change: (e: Entry) => void): Promise<Ent
       result.updated = now();
       s.put(result);
     };
-    t.oncomplete = () => resolve(result);
+    t.oncomplete = () => { changed(); resolve(result); };
     t.onerror = () => reject(t.error);
   });
 }
@@ -96,7 +108,7 @@ export async function deleteEntry(id: string) {
     keys.forEach((k) => store.delete(k));
   }
   await new Promise<void>((resolve, reject) => {
-    t.oncomplete = () => resolve();
+    t.oncomplete = () => { changed(); resolve(); };
     t.onerror = () => reject(t.error);
   });
 }
@@ -122,6 +134,7 @@ export async function chats(): Promise<Chat[]> {
   return all.sort((a, b) => b.updated.localeCompare(a.updated));
 }
 export const saveChat = (c: Chat) => req(tx("chats", "readwrite").put({ ...c, updated: now() }));
+export const deleteChat = (id: string) => req(tx("chats", "readwrite").delete(id));
 export async function chatForEntry(entryId: string): Promise<Chat | null> {
   const found = await req<Chat[]>(tx("chats").index("entryId").getAll(entryId));
   return found[0] ?? null;

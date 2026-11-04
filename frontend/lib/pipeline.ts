@@ -4,17 +4,15 @@
 import { api, ApiError } from "./api";
 import * as store from "./store";
 import type { Recording } from "./recorder";
-import { roomMode, speechEngine } from "./prefs";
+import { roomMode } from "./prefs";
 import type { Segment, Suggestion } from "./types";
 
 type WriteHook = (entryId: string, text: string, title: string | null) => boolean;
 
 const running = new Set<string>();
 let writeHook: WriteHook | null = null; // the open entry page appends text itself, so it never clobbers unsaved typing
-let languageHint = "";
 
 export const setWriteHook = (fn: WriteHook | null) => (writeHook = fn);
-export const setLanguage = (code: string) => (languageHint = code);
 
 export type EntryEvent = { entryId: string; support?: boolean; uncertain?: boolean };
 function emit(detail: EntryEvent) {
@@ -30,7 +28,7 @@ async function setSegment(entryId: string, segId: string, patch: Partial<Segment
 }
 
 export async function addRecording(entryId: string, { blob, ext, seconds }: Recording) {
-  const seg: Segment = { id: store.uid(), created: store.now(), seconds, ext, status: "saved", transcript: null, error: null, room: roomMode(), ...(speechEngine() === "alt" && { engine: "alt" as const }) };
+  const seg: Segment = { id: store.uid(), created: store.now(), seconds, ext, status: "saved", transcript: null, error: null, room: roomMode() };
   await store.saveAudio(seg.id, entryId, blob);
   await store.updateEntry(entryId, (e) => void e.segments.push(seg));
   emit({ entryId });
@@ -85,21 +83,20 @@ export async function process(entryId: string, segId: string) {
       const blob = await store.audio(segId);
       if (!blob) throw new ApiError("This recording's audio is missing.");
       form.append("audio", blob, `recording.${seg.ext}`);
-      form.append("language", languageHint);
       if (seg.room) form.append("room", "1");
-      if (seg.engine) form.append("engine", seg.engine);
-      const heard = await api<{ text: string; language: string; no_speech: boolean; uncertain?: boolean }>("/api/transcribe", { method: "POST", form });
+      const heard = await api<{ text: string; language: string; no_speech: boolean; uncertain?: boolean; marked?: string }>("/api/transcribe", { method: "POST", form });
       if (heard.no_speech) return void (await setSegment(entryId, segId, { status: "no_speech", error: null }));
-      await setSegment(entryId, segId, { transcript: heard.text, language: heard.language, uncertain: heard.uncertain });
+      // The words are on the page (faded) from here, while the writing step tidies them.
+      await setSegment(entryId, segId, { status: "writing", transcript: heard.text, marked: heard.marked, language: heard.language, uncertain: heard.uncertain });
+    } else {
+      await setSegment(entryId, segId, { status: "writing" });
     }
-
-    await setSegment(entryId, segId, { status: "writing" });
     entry = (await store.entry(entryId))!;
     seg = entry.segments.find((s) => s.id === segId)!;
     const tasks = await openTasks();
     const written = await api<{ title: string; body: string; support: boolean; empty?: boolean; actions?: Omit<Suggestion, "id" | "status">[]; done?: string[] }>("/api/write", {
       method: "POST",
-      json: { transcript: seg.transcript, prompt: entry.prompt, continuing: Boolean(entry.body.trim()), now: localNow(), open_tasks: tasks },
+      json: { transcript: seg.marked ?? seg.transcript, prompt: entry.prompt, continuing: Boolean(entry.body.trim()), now: localNow(), open_tasks: tasks },
     });
     if (written.empty) return void (await setSegment(entryId, segId, { status: "no_speech", error: null }));
     const title = entry.title ? null : written.title;
@@ -120,8 +117,9 @@ export async function process(entryId: string, segId: string) {
     if (written.support || seg.uncertain) emit({ entryId, support: written.support || undefined, uncertain: seg.uncertain });
   } catch (err) {
     const e = err as ApiError;
-    if (e.offline) await setSegment(entryId, segId, { status: "queued", error: null });
-    else await setSegment(entryId, segId, { status: "failed", error: e.message });
+    if (e.offline) return void (await setSegment(entryId, segId, { status: "queued", error: null }));
+    if (e.status === 402) window.dispatchEvent(new Event("mindly:limit"));
+    await setSegment(entryId, segId, { status: "failed", error: e.message });
   } finally {
     running.delete(segId);
   }

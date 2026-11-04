@@ -1,7 +1,10 @@
 // Photos sit inside an entry's text on a line of their own, as [[img:<id>]]. Everything that reads the text as words strips them.
 export const IMG = /^\[\[img:([\w-]+)\]\]$/;
 export const imgToken = (id: string) => `[[img:${id}]]`;
-export const plain = (body: string) => body.split("\n").filter((l) => !IMG.test(l)).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+/** ⟦ ⟧ wrap passages that were hard to hear; they are a display mark, never part of the words. */
+export const unmark = (text: string) => text.replace(/[\u27e6\u27e7]/g, "");
+
+export const plain = (body: string) => unmark(body.split("\n").filter((l) => !IMG.test(l)).join("\n")).replace(/\n{3,}/g, "\n\n").trim();
 
 export type Part = { img: string } | { text: string };
 

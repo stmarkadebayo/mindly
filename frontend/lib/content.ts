@@ -16,12 +16,6 @@ export const GOALS: [string, string][] = [
   ["ideas", "Capture thoughts on the go"], ["gratitude", "Practise gratitude"], ["any", "Just curious"],
 ];
 
-/** Three prompts for Home. They follow the goals picked in onboarding and never shuffle. */
-export function defaultPrompts(profile?: Profile): string[] {
-  const picked = (profile?.goals ?? []).flatMap((g) => PROMPTS[g] ?? []);
-  return [...new Set([...picked, "How did today actually go?", "What's taking up space in your head?", "What's one good thing from today?"])].slice(0, 3);
-}
-
 // Home prompts follow the time of day, rotate daily, and Sunday has its own. Goals from onboarding still come first.
 const BY_TIME: Record<"morning" | "day" | "evening" | "night", string[]> = {
   morning: ["How did you sleep, and how's your head?", "What's one thing you must not forget today?", "What do you want today to look like?", "What are you looking forward to today?"],

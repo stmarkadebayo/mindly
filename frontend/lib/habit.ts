@@ -34,3 +34,16 @@ export function habit(entries: Entry[], now = new Date()): Habit {
   const week = Array.from({ length: 7 }, (_, i) => ({ key: at(6 - i), count: days.get(at(6 - i)) ?? 0 }));
   return { today, streak, week };
 }
+
+/** The longest run of consecutive days with an entry, ever. Unlike the streak shown on Home it never forgives a gap. */
+export function bestStreak(entries: Entry[]): number {
+  const days = [...new Set(entries.filter((e) => !e.sample && (e.body.trim() || e.segments.length)).map((e) => dayKey(new Date(e.created))))].sort();
+  let best = 0, run = 0, prev = 0;
+  for (const k of days) {
+    const t = new Date(`${k}T12:00:00`).getTime();
+    run = prev && Math.round((t - prev) / 864e5) === 1 ? run + 1 : 1;
+    prev = t;
+    best = Math.max(best, run);
+  }
+  return best;
+}
